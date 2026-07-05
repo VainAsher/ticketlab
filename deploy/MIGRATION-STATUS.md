@@ -3,7 +3,7 @@
 Variables (decided 2026-07-05):
 
 | Var | Value |
-|---|---|
+| --- | --- |
 | APP_NAME | ticketlab |
 | SUBDOMAIN | ticketlab.vainasherstudios.com |
 | SUBDOMAIN_LABEL | ticketlab |
@@ -27,5 +27,5 @@ Steps:
 - [x] Step 7 — Authentik: provider pk=24, application slug=ticketlab, outpost patched via read-modify-write. No policy binding: NO app in this instance restricts by group (house pattern = any authenticated user). Forward-auth 302 matches reply-workbench.
 - [x] Step 8a — Public https 302 → Authentik login page shows "continue to TicketLab"; valid cert
 - [x] Step 8b — Restart-survival: attempt created pre-restart visible in /analytics/summary post-restart (volume ticketlab-data)
-- [ ] Step 8c — Post-login browser check: click a real UI control, console clean (BLOCKED on user logging in — credential entry is user-only)
+- [x] Step 8c — Post-login browser check: full demo arc exercised through the public URL (start attempt → Ollama customer reply with fact-uncovered tag → fix startup command → Apply/Start → advance clock → verify = full/100pts + debrief). No console errors. Note: first Ollama turn took ~60s (cold model + 131k context alloc); later turns faster. A stale pre-reset attempt in an open tab 404s on /message — reload fixes it.
 - [x] Step 8d — Record: no ENVIRONMENT.md exists in the homelab-infrastructure clone; the DNS vars commit is the IaC record. Wiki.js entry = manual follow-up.
