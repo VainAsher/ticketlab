@@ -1,0 +1,9 @@
+.git
+__pycache__
+*.pyc
+.venv
+venv
+tests
+*.db
+deploy/.env
+deploy/MIGRATION-STATUS.md

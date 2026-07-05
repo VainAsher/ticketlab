@@ -1,0 +1,71 @@
+schema_version: 2
+metadata:
+  id: jar-rename-typo
+  title: "Server won't boot — startup variable typo after 'cleanup'"
+  version: 1.0.0
+  author: vain
+  provenance: {created: 2026-07-05, source: generic, licence: proprietary}
+  difficulty: 2
+  tags: [startup, variables, sftp, tier1]
+  estimated_minutes: 10
+panel: {adapter: mock, min_version: "1.11"}
+ticket:
+  subject: "unable to access jarfile???"
+  priority: medium
+  customer:
+    name: "Tom"
+    persona: frustrated-novice
+    context: "Edited the Server Jar File variable while 'tidying settings'; typo'd it."
+  body: |
+    Console says "Error: Unable to access jarfile sever.jar" and then it
+    stops. I haven't uploaded or deleted anything, I promise. Is your file
+    system corrupted? Can you restore my server from a backup?
+environment:
+  server:
+    name: "tom-survival"
+    egg: minecraft-paper
+    limits: {memory: 2048, disk: 5120, cpu: 100}
+    variables: {MINECRAFT_VERSION: "1.21.4", SERVER_JARFILE: "sever.jar"}
+  mock_physics:
+    - {when: variable_equals, key: SERVER_JARFILE, value: "sever.jar"}
+fault:
+  steps:
+    - action: start_server
+    - action: wait
+      seconds: 20
+conversation:
+  persona: frustrated-novice
+  satisfaction_start: 40
+  never_volunteers: true
+  hidden_facts:
+    - id: edited-variable
+      fact: "Went through the Startup tab 'tidying settings' yesterday and edited the Server Jar File field"
+      reveal_keywords: [chang, edit, startup, variabl, setting, tab, yesterday, recent]
+    - id: error-in-console
+      fact: "The console shows the exact filename it's failing on: sever.jar"
+      reveal_keywords: [console, log, error, output, exact, message]
+verification:
+  poll_interval_seconds: 10
+  solutions:
+    - id: fix-variable
+      grade: full
+      score: 100
+      label: "Corrected the Server Jar File variable"
+      assertions:
+        - {id: var-fixed, type: variable_equals, field: SERVER_JARFILE, operator: equals, expected: "server.jar"}
+        - {id: stays-up, type: server_state, operator: equals, expected: running, stable_for_seconds: 60}
+      feedback: >
+        The error message contained the whole answer: "sever.jar" is a typo
+        in the startup variable, not filesystem corruption. Reading the error
+        literally beats restoring backups every time.
+  anti_patterns:
+    - id: reinstalled
+      penalty: 30
+      assertions:
+        - {type: activity_occurred, event: "server:settings.reinstall"}
+      feedback: >
+        A reinstall (or backup restore) for a one-character typo — the
+        customer asked for it, but tier-1 judgement means checking the cheap
+        explanation first.
+scoring: {max_verify_attempts: 5, target_minutes: 10}
+teardown: {policy: on_pass_or_expiry, expiry_minutes: 60}

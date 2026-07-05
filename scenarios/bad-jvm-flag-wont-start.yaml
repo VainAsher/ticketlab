@@ -1,0 +1,72 @@
+schema_version: 2
+metadata:
+  id: bad-jvm-flag-wont-start
+  title: "Server won't start — copied 'optimisation' flags"
+  version: 1.0.0
+  author: vain
+  provenance: {created: 2026-07-05, source: generic, licence: proprietary}
+  difficulty: 2
+  tags: [startup, jvm, tier1]
+  estimated_minutes: 10
+panel: {adapter: mock, min_version: "1.11"}
+ticket:
+  subject: "server just says offline, wont start at all"
+  priority: high
+  customer:
+    name: "Dax"
+    persona: frustrated-novice
+    context: "Pasted JVM flags from a YouTube 'FPS boost' video last night."
+  body: |
+    my server wont start AT ALL. it was fine yesterday. i click start and
+    nothing happens, it just goes straight back to offline. i pay monthly
+    for this. please just make it work.
+environment:
+  server:
+    name: "dax-smp"
+    egg: minecraft-paper
+    limits: {memory: 2048, disk: 5120, cpu: 100}
+    variables: {MINECRAFT_VERSION: "1.21.4", SERVER_JARFILE: "server.jar"}
+  mock_physics:
+    - {when: startup_contains, value: "-XX:UseSuperSpeed"}
+fault:
+  steps:
+    - action: set_startup_command
+      value: "java -Xms128M -Xmx2048M -XX:UseSuperSpeed -XX:+FastMode -jar server.jar"
+    - action: start_server
+    - action: wait
+      seconds: 20
+conversation:
+  persona: frustrated-novice
+  satisfaction_start: 35
+  never_volunteers: true
+  hidden_facts:
+    - id: pasted-flags
+      fact: "Followed a YouTube video last night and pasted 'FPS boost' flags into the startup command"
+      reveal_keywords: [chang, startup, flag, edit, copi, paste, video, guide, tutorial]
+    - id: never-started-since
+      fact: "It has not started once since making that change"
+      reveal_keywords: [when, since, last, work, before]
+verification:
+  poll_interval_seconds: 10
+  solutions:
+    - id: remove-bad-flags
+      grade: full
+      score: 100
+      label: "Removed the invalid JVM flags"
+      assertions:
+        - {id: flag-gone, type: startup_command, operator: not_contains, expected: "UseSuperSpeed"}
+        - {id: stays-up, type: server_state, operator: equals, expected: running, stable_for_seconds: 60}
+      feedback: >
+        The pasted flag isn't a real JVM option, so the JVM exits immediately.
+        Classic tier-1 pattern: "it was fine yesterday" almost always means
+        something changed yesterday — ask what.
+  anti_patterns:
+    - id: reinstalled
+      penalty: 30
+      assertions:
+        - {type: activity_occurred, event: "server:settings.reinstall"}
+      feedback: >
+        A reinstall nukes the customer's world to fix one bad line in the
+        startup command.
+scoring: {max_verify_attempts: 5, target_minutes: 10}
+teardown: {policy: on_pass_or_expiry, expiry_minutes: 60}

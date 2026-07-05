@@ -1,0 +1,108 @@
+schema_version: 2
+metadata:
+  id: oom-crash-loop-modded
+  title: "Modded server crash loop — OOM kill"
+  version: 1.0.0
+  author: vain
+  provenance: {created: 2026-07-05, source: generic, licence: proprietary}
+  difficulty: 3
+  tags: [oom, memory, modded, tier2]
+  estimated_minutes: 15
+
+panel: {adapter: mock, min_version: "1.11"}
+
+ticket:
+  subject: "Server keeps restarting every few minutes"
+  priority: medium
+  customer:
+    name: "Priya"
+    persona: technical-but-wrong
+    context: "Has already 'fixed' it twice by reinstalling. Convinced it's your hardware."
+  body: |
+    Server starts, runs for 2-3 minutes, then dies and restarts on its own.
+    I've reinstalled twice. There's nothing wrong with my modpack — it runs
+    fine on my PC with 4GB. I think your node is faulty. Please move me to
+    different hardware.
+
+environment:
+  server:
+    name: "priya-modded"
+    egg: minecraft-forge
+    limits: {memory: 1024, disk: 10240, cpu: 200}
+    variables: {MC_VERSION: "1.20.1", FORGE_VERSION: "47.3.0"}
+
+fault:
+  steps:
+    - action: set_startup_command
+      value: "java -Xms1024M -Xmx4096M -jar server.jar"
+    - action: start_server
+    - action: wait
+      seconds: 45
+
+conversation:
+  persona: technical-but-wrong
+  satisfaction_start: 40
+  never_volunteers: true
+  hidden_facts:
+    - id: added-mods
+      fact: "Installed roughly 30 new mods two days ago"
+      reveal_keywords: [chang, recent, install, add, mod, updat]
+    - id: ignored-warning
+      fact: "Saw an OutOfMemoryError line in console but dismissed it as spam"
+      reveal_keywords: [console, log, error, output, crash, warn]
+
+verification:
+  poll_interval_seconds: 15
+  solutions:
+    - id: right-size-heap
+      grade: full
+      score: 100
+      label: "Right-sized the JVM heap to the container limit"
+      assertions:
+        - id: heap-within-container
+          type: startup_command
+          operator: matches
+          expected: '-Xmx(102[0-4]|[1-9][0-9]{0,2})M'
+        - id: stays-up
+          type: server_state
+          operator: equals
+          expected: running
+          stable_for_seconds: 180
+      feedback: >
+        Root cause: -Xmx4096M inside a 1024M container — the kernel OOM-kills
+        the JVM every time the heap grows. "Runs fine on my PC with 4GB" was
+        the diagnostic clue.
+    - id: raise-container-limit
+      grade: temp
+      score: 55
+      label: "Raised the container memory limit to fit the oversized heap"
+      assertions:
+        - id: limit-raised
+          type: limits_check
+          field: memory
+          operator: gte
+          expected: 4608
+        - id: stays-up-2
+          type: server_state
+          operator: equals
+          expected: running
+          stable_for_seconds: 180
+      feedback: >
+        Works, but the customer pays for a 1GB plan — billing claws this back
+        at next sync and the crash loop returns. Needs a ticket note and
+        follow-up; neither happened.
+  anti_patterns:
+    - id: reinstalled
+      penalty: 30
+      assertions:
+        - type: activity_occurred
+          event: "server:settings.reinstall"
+      feedback: >
+        Third reinstall on this ticket. Destroys mod configs and confirms the
+        customer's belief that support doesn't read tickets.
+
+scoring:
+  max_verify_attempts: 5
+  target_minutes: 15
+
+teardown: {policy: on_pass_or_expiry, expiry_minutes: 90}

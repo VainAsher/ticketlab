@@ -1,0 +1,67 @@
+schema_version: 2
+metadata:
+  id: suspended-not-broken
+  title: "'Broken' server is actually suspended — billing mixup"
+  version: 1.0.0
+  author: vain
+  provenance: {created: 2026-07-05, source: generic, licence: proprietary}
+  difficulty: 1
+  tags: [billing, suspension, tier1, soft-skills]
+  estimated_minutes: 8
+panel: {adapter: mock, min_version: "1.11"}
+ticket:
+  subject: "Cant connect, everything is broken"
+  priority: high
+  customer:
+    name: "Lena"
+    persona: frustrated-novice
+    context: "Card expired; renewal failed a week ago; suspension email went to spam."
+  body: |
+    Nobody can join my server and the panel won't even let me press start.
+    We have a community event TONIGHT. Nothing was changed by me, it just
+    stopped working. This is really bad timing, please help fast.
+environment:
+  server:
+    name: "lena-community"
+    egg: minecraft-paper
+    limits: {memory: 4096, disk: 10240, cpu: 200}
+    variables: {MINECRAFT_VERSION: "1.21.4", SERVER_JARFILE: "server.jar"}
+fault:
+  steps:
+    - action: suspend_server
+conversation:
+  persona: frustrated-novice
+  satisfaction_start: 30
+  never_volunteers: true
+  hidden_facts:
+    - id: card-expired
+      fact: "Her card expired last month and the renewal payment failed"
+      reveal_keywords: [pay, bill, invoic, card, renew, subscript, expir, account]
+    - id: email-in-spam
+      fact: "There is a suspension notice email she never saw — it went to spam"
+      reveal_keywords: [email, notif, notice, spam, inbox, sent]
+verification:
+  poll_interval_seconds: 10
+  solutions:
+    - id: unsuspend-and-run
+      grade: full
+      score: 100
+      label: "Identified the suspension, lifted it, server back online"
+      assertions:
+        - {id: unsuspended, type: activity_occurred, event: "server:suspension.update"}
+        - {id: stays-up, type: server_state, operator: equals, expected: running, stable_for_seconds: 60}
+      feedback: >
+        Nothing was technically broken — the account was suspended for failed
+        payment. The diagnostic tell: "won't even let me press start" is
+        suspension behaviour, not a crash. The real work is the conversation:
+        billing news, delivered kindly, before her event.
+  anti_patterns:
+    - id: reinstalled
+      penalty: 30
+      assertions:
+        - {type: activity_occurred, event: "server:settings.reinstall"}
+      feedback: >
+        Reinstalling a SUSPENDED server: destroys the community's world and
+        it still won't start, because the suspension was the problem.
+scoring: {max_verify_attempts: 5, target_minutes: 8}
+teardown: {policy: on_pass_or_expiry, expiry_minutes: 60}

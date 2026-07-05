@@ -1,0 +1,24 @@
+# ticketlab — homelab deployment stack.
+# Deploys to the "local-apps" VM (192.168.0.42). Traefik on infra-core (.23) routes
+# ticketlab.vainasherstudios.com -> http://192.168.0.42:8090.
+#
+# Explicit project name: every app's stack lives in a deploy/ dir, so without this
+# Compose derives the project from the folder ("deploy") and apps collide — each
+# sees the others as orphan containers (a stray --remove-orphans deletes them).
+name: ticketlab
+services:
+  ticketlab:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: ticketlab:latest
+    container_name: ticketlab
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8090:8090"
+    volumes:
+      - ticketlab-data:/data
+
+volumes:
+  ticketlab-data:

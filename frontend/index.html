@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TicketLab — support event simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>
+:root{
+  --slate:#23262b; --slate2:#2b2f36; --slate3:#343941;
+  --vellum:#efe6d0; --vellum-dim:#d8cfb8;
+  --brass:#b8965a; --brass-bright:#d4b06a;
+  --ok:#7da87b; --warn:#c9885b; --bad:#b8615a;
+  --mono:'IBM Plex Mono',monospace; --serif:'Instrument Serif',serif;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--slate);color:var(--vellum);font-family:var(--mono);font-size:14px;min-height:100vh}
+header{display:flex;justify-content:space-between;align-items:baseline;
+  padding:18px 28px;border-bottom:1px solid var(--slate3)}
+header h1{font-family:var(--serif);font-weight:400;font-size:26px;letter-spacing:.5px}
+header h1 em{color:var(--brass-bright);font-style:normal}
+#status{color:var(--vellum-dim);font-size:12px}
+main{display:grid;grid-template-columns:1.2fr 1fr;gap:0;height:calc(100vh - 63px)}
+@media(max-width:900px){main{grid-template-columns:1fr;height:auto}}
+section{padding:20px 28px;overflow-y:auto}
+.ticket{border-right:1px solid var(--slate3)}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);margin-bottom:10px}
+
+/* ticket header card */
+.tcard{background:var(--slate2);border:1px solid var(--slate3);border-left:3px solid var(--brass);
+  padding:12px 14px;margin-bottom:14px}
+.tcard .subj{font-family:var(--serif);font-size:19px;margin-bottom:4px}
+.tcard .meta{font-size:11px;color:var(--vellum-dim)}
+
+/* satisfaction gauge — the signature element: a brass meter needle */
+.gauge{margin:14px 0 18px}
+.gauge-track{height:10px;background:var(--slate3);position:relative;border:1px solid #40454e}
+.gauge-fill{height:100%;background:linear-gradient(90deg,var(--bad),var(--warn) 45%,var(--ok));
+  width:40%;transition:width .6s cubic-bezier(.2,.8,.2,1)}
+.gauge-needle{position:absolute;top:-5px;width:2px;height:20px;background:var(--brass-bright);
+  left:40%;transition:left .6s cubic-bezier(.2,.8,.2,1)}
+.gauge-label{display:flex;justify-content:space-between;font-size:11px;color:var(--vellum-dim);margin-top:4px}
+.gauge-label b{color:var(--brass-bright)}
+
+/* thread */
+#thread{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.msg{max-width:88%;padding:10px 13px;line-height:1.5;white-space:pre-wrap}
+.msg.customer{background:var(--vellum);color:#2c2a24;align-self:flex-start;
+  border-radius:2px 10px 10px 10px}
+.msg.trainee{background:var(--slate3);align-self:flex-end;border-radius:10px 2px 10px 10px;
+  border:1px solid #40454e}
+.msg .who{font-size:10px;letter-spacing:.1em;text-transform:uppercase;opacity:.6;display:block;margin-bottom:4px}
+.fact{align-self:flex-start;font-size:11px;color:var(--brass-bright);border:1px dashed var(--brass);
+  padding:4px 9px;background:rgba(184,150,90,.08)}
+.sys{align-self:center;font-size:11px;color:var(--vellum-dim);font-style:italic}
+
+.composer{display:flex;gap:8px;position:sticky;bottom:0;background:var(--slate);padding-top:8px}
+textarea{flex:1;background:var(--slate2);border:1px solid var(--slate3);color:var(--vellum);
+  font-family:var(--mono);font-size:13px;padding:10px;resize:vertical;min-height:64px}
+textarea:focus{outline:2px solid var(--brass);outline-offset:1px}
+button{background:var(--brass);color:#211d14;border:0;font-family:var(--mono);font-weight:600;
+  font-size:12px;padding:10px 16px;cursor:pointer;letter-spacing:.04em}
+button:hover{background:var(--brass-bright)}
+button:focus-visible{outline:2px solid var(--vellum);outline-offset:2px}
+button.quiet{background:var(--slate3);color:var(--vellum)}
+button.quiet:hover{background:#40454e}
+button.danger{background:var(--bad);color:var(--vellum)}
+button:disabled{opacity:.4;cursor:not-allowed}
+
+/* panel pane */
+.panelcard{background:var(--slate2);border:1px solid var(--slate3);padding:14px;margin-bottom:14px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:8px 0;flex-wrap:wrap}
+.pill{padding:2px 10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;border:1px solid}
+.pill.running{color:var(--ok);border-color:var(--ok)}
+.pill.offline{color:var(--bad);border-color:var(--bad)}
+.pill.suspended{color:var(--warn);border-color:var(--warn)}
+.dim{display:flex;justify-content:space-between;gap:10px;margin:6px 0;font-size:12px}
+.dim b{color:var(--brass-bright)}
+.flagline{font-size:11px;color:var(--warn);margin:4px 0}
+input[type=text],input[type=number]{background:var(--slate);border:1px solid var(--slate3);
+  color:var(--vellum);font-family:var(--mono);font-size:12px;padding:8px;width:100%}
+label{font-size:11px;color:var(--vellum-dim);display:block;margin:10px 0 4px}
+.btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+#debrief{display:none}
+.debrief-grade{font-family:var(--serif);font-size:34px;color:var(--brass-bright)}
+.debrief-block{border-top:1px solid var(--slate3);padding-top:10px;margin-top:10px;line-height:1.6}
+.debrief-block .k{color:var(--vellum-dim)}
+.tape{background:var(--vellum);color:#2c2a24;padding:12px 14px;margin-top:10px;line-height:1.55;
+  box-shadow:0 2px 0 rgba(0,0,0,.35);position:relative}
+.tape::before{content:"";position:absolute;top:-6px;left:14px;right:14px;height:6px;
+  background:repeating-linear-gradient(90deg,transparent 0 6px,var(--vellum) 6px 12px)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Ticket<em>Lab</em> <span style="font-size:13px;color:var(--vellum-dim)">· support event simulator · demo mode</span></h1>
+  <div id="status">no attempt</div>
+</header>
+<main>
+  <section class="ticket">
+    <div class="eyebrow">Ticket</div>
+    <div class="tcard" id="tcard"><div class="subj">Pick a scenario to begin</div>
+      <div class="meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <select id="scenSel" style="background:var(--slate2);color:var(--vellum);border:1px solid var(--slate3);font-family:var(--mono);font-size:12px;padding:8px"></select>
+        <button id="startBtn">Start attempt</button></div></div>
+    <div class="gauge" id="gauge" hidden>
+      <div class="gauge-track"><div class="gauge-fill" id="gfill"></div><div class="gauge-needle" id="gneedle"></div></div>
+      <div class="gauge-label"><span>customer satisfaction</span><b id="gval">–</b></div>
+    </div>
+    <div id="thread"></div>
+    <div class="composer" id="composer" hidden>
+      <textarea id="reply" placeholder="Write your support reply… (asking the right diagnostic question can reveal what the customer isn't volunteering)"></textarea>
+      <button id="sendBtn">Send reply</button>
+    </div>
+  </section>
+  <section>
+    <div class="eyebrow">Panel · training server (mock)</div>
+    <div class="panelcard" id="panel" hidden>
+      <div class="row"><span>priya-modded</span><span class="pill offline" id="power">offline</span></div>
+      <label for="startup">Startup command</label>
+      <input type="text" id="startup">
+      <label for="mem">Memory limit (MiB)</label>
+      <input type="number" id="mem" min="0">
+      <div id="vars"></div>
+      <div class="btnrow">
+        <button class="quiet" id="applyBtn">Apply changes</button>
+        <button class="quiet" id="powerStart">Start</button>
+        <button class="quiet" id="powerRestart">Restart</button>
+        <button class="quiet" id="unsuspendBtn">Unsuspend</button>
+        <button class="danger" id="reinstallBtn">Reinstall server</button>
+      </div>
+      <div class="btnrow">
+        <button class="quiet" id="waitBtn">Let 3 min pass</button>
+        <button id="verifyBtn">Check my work</button>
+        <span id="budget" style="font-size:11px;color:var(--vellum-dim);align-self:center"></span>
+      </div>
+    </div>
+    <div class="panelcard" id="debrief">
+      <div class="eyebrow">Debrief</div>
+      <div class="debrief-grade" id="dgrade"></div>
+      <div class="debrief-block" id="dtech"></div>
+      <div class="debrief-block" id="dconv"></div>
+      <div class="tape" id="dtape"></div>
+      <div class="debrief-block" id="dgrades"></div>
+      <div class="btnrow"><button id="confirmBtn" style="display:none">Confirm grades (trainer)</button></div>
+    </div>
+  </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let AID=null, BUDGET=0, USED=0;
+const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
+
+function bubble(role,who,text){const m=document.createElement('div');
+  m.className='msg '+role;m.innerHTML=`<span class="who">${esc(who)}</span>${esc(text)}`;
+  $('thread').appendChild(m);m.scrollIntoView({block:'end'});}
+function chip(text,cls){const c=document.createElement('div');c.className=cls;
+  c.textContent=text;$('thread').appendChild(c);c.scrollIntoView({block:'end'});}
+function setGauge(v){$('gfill').style.width=v+'%';$('gneedle').style.left=v+'%';$('gval').textContent=v+' / 100';}
+
+async function api(path,body,method='POST'){
+  const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},
+    body:body?JSON.stringify(body):undefined});
+  if(r.status===429){chip('Verify budget exhausted — head to the debrief.','sys');return null;}
+  if(!r.ok){chip('Something went wrong: '+r.status,'sys');return null;}
+  return r.json();
+}
+
+async function refreshPanel(){
+  const p=await fetch(`/attempts/${AID}/demo/panel`).then(r=>r.json());
+  $('power').textContent=p.power_state;
+  $('power').className='pill '+(p.power_state==='running'?'running':
+    p.power_state==='suspended'?'suspended':'offline');
+  if(document.activeElement!==$('startup'))$('startup').value=p.startup_command;
+  if(document.activeElement!==$('mem'))$('mem').value=p.limits.memory??'';
+  const holder=$('vars');
+  for(const [k,v] of Object.entries(p.variables||{})){
+    let inp=document.getElementById('var-'+k);
+    if(!inp){
+      const lab=document.createElement('label');lab.textContent='Variable · '+k;
+      inp=document.createElement('input');inp.type='text';inp.id='var-'+k;inp.dataset.key=k;
+      holder.appendChild(lab);holder.appendChild(inp);
+    }
+    if(document.activeElement!==inp)inp.value=v;
+  }
+}
+
+async function loadScenarios(){
+  const list=await fetch('/scenarios').then(r=>r.json());
+  $('scenSel').innerHTML=list.map(s=>`<option value="${esc(s.id)}">${esc(s.title)} (lvl ${s.difficulty})</option>`).join('');
+}
+loadScenarios();
+
+$('startBtn').onclick=async()=>{
+  $('thread').innerHTML='';$('debrief').style.display='none';
+  const a=await api('/attempts',{scenario_id:$('scenSel').value});
+  if(!a)return;
+  AID=a.attempt_id;BUDGET=a.verify_budget;USED=0;
+  $('status').textContent='attempt '+AID;
+  $('tcard').innerHTML=`<div class="subj">${esc(a.ticket.subject)}</div>
+    <div class="meta">from ${esc(a.ticket.customer_name)} · priority ${esc(a.ticket.priority)}</div>`;
+  $('gauge').hidden=false;setGauge(a.satisfaction);
+  $('composer').hidden=false;$('panel').hidden=false;
+  $('budget').textContent=`verify: ${BUDGET} left`;
+  bubble('customer',a.ticket.customer_name,a.ticket.body.trim());
+  refreshPanel();
+};
+
+$('sendBtn').onclick=async()=>{
+  const t=$('reply').value.trim();if(!t||!AID)return;
+  bubble('trainee','you',t);$('reply').value='';
+  const r=await api(`/attempts/${AID}/message`,{text:t});if(!r)return;
+  r.facts_revealed.forEach(f=>chip('fact uncovered: '+f,'fact'));
+  bubble('customer','customer',r.reply);setGauge(r.satisfaction);
+  if(r.escalated)chip('Satisfaction hit zero — the customer escalated. Conversation over.','sys');
+};
+
+$('applyBtn').onclick=async()=>{
+  await api(`/attempts/${AID}/demo/mutate`,{action:'set_startup_command',value:$('startup').value});
+  await api(`/attempts/${AID}/demo/mutate`,{action:'set_limits',memory:parseInt($('mem').value||'0',10)});
+  for(const inp of $('vars').querySelectorAll('input')){
+    await api(`/attempts/${AID}/demo/mutate`,{action:'set_variable',key:inp.dataset.key,value:inp.value});
+  }
+  refreshPanel();
+};
+$('unsuspendBtn').onclick=async()=>{await api(`/attempts/${AID}/demo/mutate`,{action:'unsuspend'});refreshPanel();};
+$('powerStart').onclick=async()=>{await api(`/attempts/${AID}/demo/mutate`,{action:'start'});refreshPanel();};
+$('powerRestart').onclick=async()=>{await api(`/attempts/${AID}/demo/mutate`,{action:'restart'});refreshPanel();};
+$('reinstallBtn').onclick=async()=>{await api(`/attempts/${AID}/demo/mutate`,{action:'reinstall'});refreshPanel();};
+$('waitBtn').onclick=async()=>{await api(`/attempts/${AID}/demo/advance_clock`,{seconds:181});
+  chip('Three minutes pass…','sys');refreshPanel();};
+
+$('verifyBtn').onclick=async()=>{
+  const r=await api(`/attempts/${AID}/verify`);if(!r)return showDebrief();
+  USED++;$('budget').textContent=`verify: ${r.attempts_remaining} left`;
+  if(!r.complete){chip('Not resolved yet — the fault (or its instability) persists.','sys');
+    if(r.attempts_remaining<=0)showDebrief();return;}
+  chip(`Resolved — grade: ${r.grade} (${r.score} pts)`,'sys');showDebrief();
+};
+
+async function showDebrief(){
+  const d=await fetch(`/attempts/${AID}/debrief`).then(r=>r.json());
+  $('debrief').style.display='block';
+  const t=d.technical,c=d.conversation;
+  $('dgrade').textContent=t.complete?`${t.grade} · ${t.score} pts`:'unresolved · 0 pts';
+  $('dtech').innerHTML=`<span class="k">technical —</span> ${t.complete?esc(t.solution):'no solution verified'}`+
+    (t.anti_patterns.length?`<br><span class="k">anti-patterns:</span> ${esc(t.anti_patterns.join(', '))}`:'');
+  $('dconv').innerHTML=`<span class="k">conversation —</span> satisfaction ${c.satisfaction_final}/100`+
+    `${c.escalated?' (escalated)':''} · facts uncovered ${c.facts_uncovered}/${c.facts_total}`+
+    (c.facts_missed.length?`<br><span class="k">missed:</span> ${esc(c.facts_missed.join(', '))}`:'');
+  $('dtape').textContent=(t.feedback||'')+' '+(t.anti_pattern_feedback||[]).join(' ');
+  const g=await fetch(`/attempts/${AID}/grades`).then(r=>r.json());
+  renderGrades(g);
+}
+
+function renderGrades(g){
+  const dims=g.grades.dimensions.map(d=>
+    `<div class="dim"><span>${esc(d.name)}${d.overridden?' *':''} — ${esc(d.rationale)}</span><b>${d.score}/10</b></div>`).join('');
+  const flags=(g.grades.flags||[]).map(f=>
+    `<div class="flagline">⚑ ${esc(f.detail||f.id)}</div>`).join('');
+  $('dgrades').innerHTML=`<span class="k">reply quality — ${esc(g.status)} by ${esc(g.grader)}${g.confirmed_by?(' · confirmed by '+esc(g.confirmed_by)):''}</span>${dims}${flags}`;
+  $('confirmBtn').style.display=g.status==='proposed'?'inline-block':'none';
+}
+
+$('confirmBtn').onclick=async()=>{
+  const who=prompt('Trainer name for the confirmation record:');
+  if(!who)return;
+  const g=await api(`/attempts/${AID}/grades/confirm`,{confirmed_by:who});
+  if(g)renderGrades(g);
+};
+</script>
+</body>
+</html>

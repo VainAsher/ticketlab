@@ -1,0 +1,75 @@
+schema_version: 2
+metadata:
+  id: wrong-java-version
+  title: "Crash on start after modpack upgrade — Java 8 vs 1.20.1"
+  version: 1.0.0
+  author: vain
+  provenance: {created: 2026-07-05, source: generic, licence: proprietary}
+  difficulty: 2
+  tags: [java, version, modded, tier1]
+  estimated_minutes: 12
+panel: {adapter: mock, min_version: "1.11"}
+ticket:
+  subject: "Class file version error??"
+  priority: medium
+  customer:
+    name: "Marcus"
+    persona: technical-but-wrong
+    context: "Upgraded his pack to 1.20.1 yesterday. Insists Java 8 is 'the stable one'."
+  body: |
+    Getting "class file version 61.0" errors on boot since yesterday. I know
+    what I'm doing — I deliberately keep the server on Java 8 because every
+    forum says it's the most stable. Your Java install must be corrupted.
+    Please fix your image.
+environment:
+  server:
+    name: "marcus-pack"
+    egg: minecraft-forge
+    limits: {memory: 4096, disk: 10240, cpu: 200}
+    variables: {MC_VERSION: "1.20.1", JAVA_VERSION: "17"}
+  mock_physics:
+    - {when: variable_equals, key: JAVA_VERSION, value: "8"}
+fault:
+  steps:
+    - action: set_variable
+      key: JAVA_VERSION
+      value: "8"
+    - action: start_server
+    - action: wait
+      seconds: 20
+conversation:
+  persona: technical-but-wrong
+  satisfaction_start: 45
+  never_volunteers: true
+  hidden_facts:
+    - id: upgraded-pack
+      fact: "Upgraded the modpack from 1.12 to 1.20.1 yesterday"
+      reveal_keywords: [chang, updat, upgrad, version, pack, recent, yesterday]
+    - id: forum-advice
+      fact: "Set Java to 8 himself because an old forum thread said it was most stable"
+      reveal_keywords: [java, jdk, runtime, why, who, set]
+verification:
+  poll_interval_seconds: 10
+  solutions:
+    - id: modern-java
+      grade: full
+      score: 100
+      label: "Set a Java version compatible with 1.20.1"
+      assertions:
+        - {id: java-ok, type: variable_equals, field: JAVA_VERSION, operator: matches, expected: "^(17|21)$"}
+        - {id: stays-up, type: server_state, operator: equals, expected: running, stable_for_seconds: 60}
+      feedback: >
+        Minecraft 1.20.1 requires Java 17+; "class file version 61.0" IS the
+        JVM saying exactly that. The coaching challenge here is the customer:
+        confidently wrong, and the fix contradicts their belief. Correct
+        without condescending.
+  anti_patterns:
+    - id: reinstalled
+      penalty: 30
+      assertions:
+        - {type: activity_occurred, event: "server:settings.reinstall"}
+      feedback: >
+        Reinstalling doesn't touch the Java version variable — the crash
+        survives, minus the customer's data.
+scoring: {max_verify_attempts: 5, target_minutes: 12}
+teardown: {policy: on_pass_or_expiry, expiry_minutes: 60}
