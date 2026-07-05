@@ -107,6 +107,27 @@ def test_debrief_combines_both_planes(client):
     assert r["verify_attempts_used"] >= 1
 
 
+def test_attempt_creation_includes_trainee_safe_brief(client):
+    body = client.post("/attempts",
+                       json={"scenario_id": "oom-crash-loop-modded"}).json()
+    sc = body["scenario"]
+    assert sc["facts_total"] == 2          # count only — never fact content
+    assert sc["objectives"]                # defaults when scenario authors none
+    dumped = str(body)
+    assert "Xmx4096" not in dumped         # brief must pass the same firewall
+    assert "right-size-heap" not in dumped
+
+
+def test_authored_objectives_served_and_leak_free(client):
+    body = client.post("/attempts",
+                       json={"scenario_id": "bad-jvm-flag-wont-start"}).json()
+    sc = body["scenario"]
+    assert any("changed before the outage" in o for o in sc["objectives"])
+    dumped = str(body)
+    assert "UseSuperSpeed" not in dumped   # fault detail
+    assert "remove-bad-flags" not in dumped  # solution id
+
+
 def test_message_length_capped(client):
     aid = start(client)
     r = client.post(f"/attempts/{aid}/message", json={"text": "x" * 100_000})

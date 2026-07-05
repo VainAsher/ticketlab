@@ -33,6 +33,21 @@ section{padding:20px 28px;overflow-y:auto}
 .tcard .subj{font-family:var(--serif);font-size:19px;margin-bottom:4px}
 .tcard .meta{font-size:11px;color:var(--vellum-dim)}
 
+/* mission card — goals + live progress that fills in as you play */
+.mission{background:var(--slate2);border:1px solid var(--slate3);padding:12px 14px;margin-bottom:14px}
+.mission .mmeta{font-size:11px;color:var(--vellum-dim);margin-bottom:8px}
+.goal{display:flex;gap:8px;font-size:12px;color:var(--vellum-dim);margin:5px 0;line-height:1.45}
+.goal::before{content:"◇";color:var(--brass);flex:none}
+.prog{display:flex;justify-content:space-between;gap:10px;font-size:12px;margin:5px 0;
+  color:var(--vellum-dim);border-top:1px dashed var(--slate3);padding-top:5px}
+.prog:first-of-type{border-top:1px solid var(--slate3);margin-top:9px;padding-top:9px}
+.prog .mark{flex:none;width:14px;color:var(--slate3)}
+.prog b{color:var(--vellum-dim);font-weight:500;white-space:nowrap}
+.prog.done{color:var(--vellum)}
+.prog.done .mark{color:var(--ok)}
+.prog.done b{color:var(--ok)}
+.prog.failed .mark,.prog.failed b{color:var(--bad)}
+
 /* satisfaction gauge — the signature element: a brass meter needle */
 .gauge{margin:14px 0 18px}
 .gauge-track{height:10px;background:var(--slate3);position:relative;border:1px solid #40454e}
@@ -105,6 +120,12 @@ label{font-size:11px;color:var(--vellum-dim);display:block;margin:10px 0 4px}
       <div class="meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="scenSel" style="background:var(--slate2);color:var(--vellum);border:1px solid var(--slate3);font-family:var(--mono);font-size:12px;padding:8px"></select>
         <button id="startBtn">Start attempt</button></div></div>
+    <div class="mission" id="mission" hidden>
+      <div class="eyebrow">Mission</div>
+      <div class="mmeta" id="mmeta"></div>
+      <div id="goals"></div>
+      <div id="progress"></div>
+    </div>
     <div class="gauge" id="gauge" hidden>
       <div class="gauge-track"><div class="gauge-fill" id="gfill"></div><div class="gauge-needle" id="gneedle"></div></div>
       <div class="gauge-label"><span>customer satisfaction</span><b id="gval">–</b></div>
@@ -150,7 +171,7 @@ label{font-size:11px;color:var(--vellum-dim);display:block;margin:10px 0 4px}
 </main>
 <script>
 const $=id=>document.getElementById(id);
-let AID=null, BUDGET=0, USED=0;
+let AID=null, BUDGET=0, USED=0, PROG=null;
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
 
 function bubble(role,who,text){const m=document.createElement('div');
@@ -159,6 +180,22 @@ function bubble(role,who,text){const m=document.createElement('div');
 function chip(text,cls){const c=document.createElement('div');c.className=cls;
   c.textContent=text;$('thread').appendChild(c);c.scrollIntoView({block:'end'});}
 function setGauge(v){$('gfill').style.width=v+'%';$('gneedle').style.left=v+'%';$('gval').textContent=v+' / 100';}
+
+function renderProgress(){
+  if(!PROG)return;
+  const row=(state,label,value)=>{const cls=state===true?'prog done':state==='failed'?'prog failed':'prog';
+    const mark=state===true?'✓':state==='failed'?'✗':'○';
+    return `<div class="${cls}"><span class="mark">${mark}</span><span style="flex:1">${esc(label)}</span><b>${esc(value)}</b></div>`;};
+  const p=PROG;
+  const factsDone=p.factsTotal>0&&p.found.size>=p.factsTotal;
+  const satState=p.escalated?'failed':(p.sat>=p.satStart?true:null);
+  const verState=p.resolved?true:(p.left<=0?'failed':null);
+  $('progress').innerHTML=
+    row(factsDone,'hidden context uncovered',`${p.found.size}/${p.factsTotal}`)+
+    row(p.running,'server running & holding',p.running?'running':'offline')+
+    row(satState,'customer on side',`${p.sat}/100${p.escalated?' · escalated':''}`)+
+    row(verState,'verified resolved',p.resolved?p.grade:`${p.left} verif${p.left===1?'y':'ies'} left`);
+}
 
 async function api(path,body,method='POST'){
   const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},
@@ -173,6 +210,7 @@ async function refreshPanel(){
   $('power').textContent=p.power_state;
   $('power').className='pill '+(p.power_state==='running'?'running':
     p.power_state==='suspended'?'suspended':'offline');
+  if(PROG){PROG.running=p.power_state==='running';renderProgress();}
   if(document.activeElement!==$('startup'))$('startup').value=p.startup_command;
   if(document.activeElement!==$('mem'))$('mem').value=p.limits.memory??'';
   const holder=$('vars');
@@ -204,6 +242,13 @@ $('startBtn').onclick=async()=>{
   $('gauge').hidden=false;setGauge(a.satisfaction);
   $('composer').hidden=false;$('panel').hidden=false;
   $('budget').textContent=`verify: ${BUDGET} left`;
+  const sc=a.scenario;
+  PROG={factsTotal:sc.facts_total,found:new Set(),running:false,resolved:false,
+        grade:null,sat:a.satisfaction,satStart:a.satisfaction,escalated:false,left:BUDGET};
+  $('mission').hidden=false;
+  $('mmeta').textContent=`${sc.title} · lvl ${sc.difficulty} · ~${sc.estimated_minutes} min`;
+  $('goals').innerHTML=sc.objectives.map(o=>`<div class="goal">${esc(o)}</div>`).join('');
+  renderProgress();
   bubble('customer',a.ticket.customer_name,a.ticket.body.trim());
   refreshPanel();
 };
@@ -212,8 +257,9 @@ $('sendBtn').onclick=async()=>{
   const t=$('reply').value.trim();if(!t||!AID)return;
   bubble('trainee','you',t);$('reply').value='';
   const r=await api(`/attempts/${AID}/message`,{text:t});if(!r)return;
-  r.facts_revealed.forEach(f=>chip('fact uncovered: '+f,'fact'));
+  r.facts_revealed.forEach(f=>{chip('fact uncovered: '+f,'fact');PROG&&PROG.found.add(f);});
   bubble('customer','customer',r.reply);setGauge(r.satisfaction);
+  if(PROG){PROG.sat=r.satisfaction;PROG.escalated=r.escalated;renderProgress();}
   if(r.escalated)chip('Satisfaction hit zero — the customer escalated. Conversation over.','sys');
 };
 
@@ -235,6 +281,9 @@ $('waitBtn').onclick=async()=>{await api(`/attempts/${AID}/demo/advance_clock`,{
 $('verifyBtn').onclick=async()=>{
   const r=await api(`/attempts/${AID}/verify`);if(!r)return showDebrief();
   USED++;$('budget').textContent=`verify: ${r.attempts_remaining} left`;
+  if(PROG){PROG.left=r.attempts_remaining;
+    if(r.complete){PROG.resolved=true;PROG.grade=`${r.grade} · ${r.score} pts`;}
+    renderProgress();}
   if(!r.complete){chip('Not resolved yet — the fault (or its instability) persists.','sys');
     if(r.attempts_remaining<=0)showDebrief();return;}
   chip(`Resolved — grade: ${r.grade} (${r.score} pts)`,'sys');showDebrief();

@@ -56,6 +56,11 @@ class Metadata(BaseModel):
     difficulty: int = Field(ge=1, le=5)
     tags: list[str] = []
     estimated_minutes: int = 15
+    # Trainee-VISIBLE goals shown in the UI before the fix is found. Authoring
+    # rule: must not name the fault, the solution, or any hidden fact — write
+    # what success looks like, not how to get there. Empty list = the API
+    # serves generic derived objectives instead.
+    objectives: list[str] = []
 
 
 class PanelCfg(BaseModel):

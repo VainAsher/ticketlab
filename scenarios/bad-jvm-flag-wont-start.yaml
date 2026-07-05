@@ -8,6 +8,10 @@ metadata:
   difficulty: 2
   tags: [startup, jvm, tier1]
   estimated_minutes: 10
+  objectives:
+    - "Work out what changed before the outage — the customer won't volunteer it"
+    - "Get the server back to a stable running state, no destructive shortcuts"
+    - "Keep Dax on side — a frustrated paying customer is one bad reply from escalating"
 panel: {adapter: mock, min_version: "1.11"}
 ticket:
   subject: "server just says offline, wont start at all"

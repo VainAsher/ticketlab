@@ -25,6 +25,16 @@ class CreateAttemptReq(BaseModel):
     scenario_id: str
 
 
+# Served when a scenario authors no objectives of its own. Deliberately
+# generic: goals describe what success looks like, never how to get there.
+DEFAULT_OBJECTIVES = [
+    "Find out what the customer isn't volunteering",
+    "Restore the server to a stable running state",
+    "Keep the customer on side — don't let it escalate",
+    "Verify your fix before the attempt budget runs out",
+]
+
+
 class MessageReq(BaseModel):
     text: str = Field(min_length=1, max_length=4000)
 
@@ -82,6 +92,13 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
             },
             "satisfaction": a.conversation.state.satisfaction,
             "verify_budget": s.scoring.max_verify_attempts,
+            "scenario": {  # trainee-safe brief — counts and goals, never content
+                "title": s.metadata.title,
+                "difficulty": s.metadata.difficulty,
+                "estimated_minutes": s.metadata.estimated_minutes,
+                "objectives": s.metadata.objectives or DEFAULT_OBJECTIVES,
+                "facts_total": len(s.conversation.hidden_facts),
+            },
         }
 
     def _get(attempt_id: str):
