@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TicketLab — trainer console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Serif&display=swap" rel="stylesheet">
+<style>
+:root{
+  --slate:#23262b; --slate2:#2b2f36; --slate3:#343941;
+  --vellum:#efe6d0; --vellum-dim:#d8cfb8;
+  --brass:#b8965a; --brass-bright:#d4b06a;
+  --ok:#7da87b; --warn:#c9885b; --bad:#b8615a;
+  --mono:'IBM Plex Mono',monospace; --serif:'Instrument Serif',serif;
+}
+*{box-sizing:border-box;margin:0}
+body{background:var(--slate);color:var(--vellum);font-family:var(--mono);font-size:14px;min-height:100vh}
+header{display:flex;justify-content:space-between;align-items:baseline;padding:18px 28px;border-bottom:1px solid var(--slate3)}
+header h1{font-family:var(--serif);font-weight:400;font-size:26px;letter-spacing:.5px}
+header h1 em{color:var(--brass-bright);font-style:normal}
+header a{color:var(--vellum-dim);font-size:12px;text-decoration:none}
+header a:hover{color:var(--brass-bright)}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--slate3);padding:0 28px}
+.tab{padding:12px 20px;cursor:pointer;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--vellum-dim);border-bottom:2px solid transparent}
+.tab.active{color:var(--brass-bright);border-bottom-color:var(--brass)}
+main{padding:22px 28px;max-width:1500px}
+.eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--brass);margin:0 0 10px}
+.card{background:var(--slate2);border:1px solid var(--slate3);padding:14px;margin-bottom:14px}
+button{background:var(--brass);color:#211d14;border:0;font-family:var(--mono);font-weight:600;font-size:12px;padding:9px 15px;cursor:pointer;letter-spacing:.04em}
+button:hover{background:var(--brass-bright)}
+button.quiet{background:var(--slate3);color:var(--vellum)}
+button.quiet:hover{background:#40454e}
+button.mini{padding:4px 9px;font-size:11px}
+button.danger{background:var(--bad);color:var(--vellum)}
+button:disabled{opacity:.4;cursor:not-allowed}
+input,select,textarea{background:var(--slate);border:1px solid var(--slate3);color:var(--vellum);font-family:var(--mono);font-size:12px;padding:8px;width:100%}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--brass);outline-offset:1px}
+label{font-size:11px;color:var(--vellum-dim);display:block;margin:10px 0 4px}
+label .req{color:var(--warn)}
+.hint{font-size:10.5px;color:#8f8a79;line-height:1.45;margin-top:3px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 16px}
+.grid4{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:0 16px}
+@media(max-width:900px){.grid2,.grid3,.grid4{grid-template-columns:1fr}}
+
+/* monitor */
+.statrow{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin-bottom:16px}
+.stat{background:var(--slate2);border:1px solid var(--slate3);border-left:3px solid var(--brass);padding:11px 13px}
+.stat .t{font-family:var(--serif);font-size:16px;margin-bottom:6px;line-height:1.25}
+.stat .n{font-size:11px;color:var(--vellum-dim);display:flex;justify-content:space-between;margin:2px 0}
+.stat .n b{color:var(--vellum)}
+.chip{display:inline-block;padding:1px 8px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;border:1px solid var(--slate3);color:var(--vellum-dim)}
+.chip.authored{color:var(--brass-bright);border-color:var(--brass)}
+.chip.proposed{color:var(--warn);border-color:var(--warn)}
+.chip.confirmed{color:var(--ok);border-color:var(--ok)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--brass);text-align:left;padding:7px 9px;border-bottom:1px solid var(--slate3)}
+td{padding:7px 9px;border-bottom:1px solid #2e333a;color:var(--vellum-dim)}
+tr.row:hover td{background:#2e333a;cursor:pointer;color:var(--vellum)}
+.filters{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:10px}
+.filters>div{min-width:180px}
+.grade-full{color:var(--ok)}.grade-temp{color:var(--warn)}.grade-partial{color:var(--brass-bright)}.grade-none{color:var(--bad)}
+
+/* detail drawer */
+#drawer{position:fixed;top:0;right:-720px;width:min(720px,95vw);height:100vh;background:var(--slate2);border-left:1px solid var(--slate3);transition:right .25s ease;overflow-y:auto;padding:20px 24px;z-index:10}
+#drawer.open{right:0}
+#drawer .close{float:right}
+.timeline{margin:10px 0}
+.tl{border-left:2px solid var(--slate3);padding:6px 0 6px 14px;margin-left:6px;font-size:12px;line-height:1.5}
+.tl .k{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--brass)}
+.tl.verify{border-left-color:var(--brass)}
+.tl .factchip{display:inline-block;font-size:10.5px;color:var(--brass-bright);border:1px dashed var(--brass);padding:1px 7px;margin:2px 4px 0 0}
+.tl .cust{color:#c9c0a8}
+.dim{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:6px 0;font-size:12px}
+.dim input{width:64px}
+.flagline{font-size:11px;color:var(--warn);margin:4px 0}
+
+/* wizard */
+.step{border:1px solid var(--slate3);margin-bottom:10px;background:var(--slate2)}
+.step>.head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;user-select:none}
+.step>.head .n{width:26px;height:26px;border:1px solid var(--brass);color:var(--brass);display:flex;align-items:center;justify-content:center;font-size:12px;flex:none}
+.step.done>.head .n{background:var(--brass);color:#211d14}
+.step>.head .t{font-family:var(--serif);font-size:17px}
+.step>.head .sub{font-size:11px;color:var(--vellum-dim);margin-left:auto;text-align:right}
+.step>.body{display:none;padding:4px 16px 16px;border-top:1px solid var(--slate3)}
+.step.open>.body{display:block}
+.step.locked{opacity:.45}
+.step.locked>.head{cursor:not-allowed}
+.itemcard{background:var(--slate);border:1px dashed var(--slate3);padding:10px 12px;margin:10px 0;position:relative}
+.itemcard .rm{position:absolute;top:8px;right:8px}
+.subhead{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--brass-bright);margin:14px 0 2px}
+.kwchip{display:inline-block;background:var(--slate3);padding:2px 8px;margin:3px 4px 0 0;font-size:11px}
+.kwchip b{cursor:pointer;color:var(--bad);margin-left:5px}
+.errbox{border:1px solid var(--bad);background:rgba(184,97,90,.08);padding:10px 12px;margin:10px 0;font-size:12px;display:none}
+.errbox .e{margin:3px 0;color:var(--vellum-dim)}
+.errbox .e b{color:var(--bad)}
+.okbox{border:1px solid var(--ok);background:rgba(125,168,123,.08);padding:10px 12px;margin:10px 0;font-size:12px;display:none}
+pre{background:var(--slate);border:1px solid var(--slate3);padding:12px;font-size:11px;overflow-x:auto;max-height:340px}
+[data-tip]{border-bottom:1px dotted var(--brass);cursor:help;position:relative}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Ticket<em>Lab</em> <span style="font-size:13px;color:var(--vellum-dim)">· trainer console</span></h1>
+  <a href="/">→ trainee view</a>
+</header>
+<div class="tabs">
+  <div class="tab active" data-tab="monitor">Monitor</div>
+  <div class="tab" data-tab="author">Author scenario</div>
+</div>
+<main>
+
+<!-- ═══════════ MONITOR ═══════════ -->
+<section id="tab-monitor">
+  <div class="eyebrow">Scenario health</div>
+  <div class="statrow" id="stats"></div>
+  <div class="eyebrow">Attempts</div>
+  <div class="card">
+    <div class="filters">
+      <div><label>Scenario</label><select id="fScen"><option value="">all scenarios</option></select></div>
+      <div><label>Trainee</label><input id="fTrainee" placeholder="filter by name…"></div>
+      <div style="min-width:0"><label>&nbsp;</label><label style="margin:0;display:flex;gap:6px;align-items:center;font-size:12px;color:var(--vellum)"><input type="checkbox" id="fReview" style="width:auto"> needs review only</label></div>
+      <button class="quiet" id="fRefresh">Refresh</button>
+    </div>
+    <table>
+      <thead><tr><th>started</th><th>trainee</th><th>scenario</th><th>result</th><th>satisf.</th><th>facts</th><th>verifies</th><th>review</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ═══════════ AUTHOR ═══════════ -->
+<section id="tab-author" style="display:none">
+  <div class="eyebrow">Author a scenario — each step unlocks the next; publish validates against the engine schema</div>
+  <div id="wizard"></div>
+  <div class="errbox" id="verrors"><b>The engine rejected the draft:</b><div id="verrlist"></div></div>
+  <div class="okbox" id="vok"></div>
+  <div style="display:flex;gap:10px;margin-top:6px">
+    <button class="quiet" id="validateBtn">Validate draft</button>
+    <button id="publishBtn">Publish scenario</button>
+    <button class="quiet" id="previewBtn">Preview JSON</button>
+  </div>
+  <pre id="preview" style="display:none;margin-top:10px"></pre>
+</section>
+</main>
+
+<!-- drawer -->
+<div id="drawer">
+  <button class="quiet close" onclick="document.getElementById('drawer').classList.remove('open')">close ✕</button>
+  <div id="dbody"></div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>{const d=document.createElement('div');d.textContent=s??'';return d.innerHTML};
+const api=(p,b,m='POST')=>fetch(p,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});
+
+/* ── tabs ── */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active',x===t));
+  $('tab-monitor').style.display=t.dataset.tab==='monitor'?'':'none';
+  $('tab-author').style.display=t.dataset.tab==='author'?'':'none';
+});
+
+/* ═══════════ MONITOR ═══════════ */
+let SCEN=[];
+async function loadStats(){
+  const [sum,scen]=await Promise.all([
+    fetch('/analytics/summary').then(r=>r.json()),
+    fetch('/trainer/scenarios').then(r=>r.json())]);
+  SCEN=scen;
+  $('fScen').innerHTML='<option value="">all scenarios</option>'+
+    scen.map(s=>`<option value="${esc(s.id)}">${esc(s.title)}</option>`).join('');
+  $('stats').innerHTML=scen.map(s=>{
+    const a=sum[s.id]||{attempts:0,completed:0,avg_score:0,escalations:0};
+    const rate=a.attempts?Math.round(100*a.completed/a.attempts):0;
+    return `<div class="stat"><div class="t">${esc(s.title)}</div>
+      <div class="n"><span>attempts</span><b>${a.attempts}</b></div>
+      <div class="n"><span>completion</span><b>${rate}%</b></div>
+      <div class="n"><span>avg score</span><b>${Math.round(a.avg_score||0)}</b></div>
+      <div class="n"><span>escalations</span><b>${a.escalations||0}</b></div>
+      <div style="margin-top:6px"><span class="chip ${s.origin}">${s.origin}</span>
+      <span class="chip">lvl ${s.difficulty}</span></div></div>`;
+  }).join('');
+}
+async function loadRows(){
+  const p=new URLSearchParams();
+  if($('fScen').value)p.set('scenario_id',$('fScen').value);
+  if($('fTrainee').value.trim())p.set('trainee',$('fTrainee').value.trim());
+  let rows=await fetch('/trainer/attempts?'+p).then(r=>r.json());
+  if($('fReview').checked)rows=rows.filter(r=>r.grades_status==='proposed');
+  $('rows').innerHTML=rows.map(r=>{
+    const when=new Date(r.started_at*1000).toLocaleString();
+    const res=r.grade?`<span class="grade-${r.grade}">${r.grade} · ${r.score}</span>`
+      :(r.finished_at?'<span class="grade-none">unresolved</span>':'<span style="color:#8f8a79">in progress</span>');
+    const rev=r.grades_status?`<span class="chip ${r.grades_status}">${r.grades_status}</span>`:'—';
+    return `<tr class="row" data-id="${esc(r.id)}"><td>${esc(when)}</td><td>${esc(r.trainee)}</td>
+      <td>${esc(r.scenario_id)}</td><td>${res}</td>
+      <td>${r.satisfaction_final??'—'}${r.escalated?' ⚑':''}</td>
+      <td>${r.facts_uncovered??'—'}/${r.facts_total??'—'}</td>
+      <td>${r.verify_attempts??'—'}</td><td>${rev}</td></tr>`;
+  }).join('')||'<tr><td colspan="8" style="color:#8f8a79">no attempts yet</td></tr>';
+  document.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>openDetail(tr.dataset.id));
+}
+$('fRefresh').onclick=()=>{loadStats();loadRows();};
+$('fScen').onchange=loadRows;$('fReview').onchange=loadRows;
+$('fTrainee').onkeydown=e=>{if(e.key==='Enter')loadRows();};
+
+async function openDetail(id){
+  const d=await fetch(`/trainer/attempts/${id}`).then(r=>r.json());
+  const r=d.record;
+  const tl=d.events.map(e=>{
+    if(e.kind==='message'){const p=e.payload;
+      return `<div class="tl"><span class="k">trainee</span> ${esc(p.text)}<br>
+        ${(p.facts_revealed||[]).map(f=>`<span class="factchip">fact: ${esc(f)}</span>`).join('')}
+        <span class="k">customer</span> <span class="cust">${esc(p.reply)}</span>
+        <br><span style="color:#8f8a79">satisfaction ${p.satisfaction}${p.escalated?' · ESCALATED':''}</span></div>`;}
+    if(e.kind==='verify'){const p=e.payload;
+      return `<div class="tl verify"><span class="k">verify</span> ${p.complete?`resolved — ${esc(p.grade)} (${p.score})`:'not resolved'}${(p.anti_patterns||[]).length?' · anti-patterns: '+esc(p.anti_patterns.join(', ')):''}</div>`;}
+    return `<div class="tl"><span class="k">${esc(e.kind)}</span></div>`;
+  }).join('');
+  let gr='<div style="color:#8f8a79;font-size:12px">no reply-quality grades yet (generated at debrief)</div>';
+  if(d.grades){
+    const g=d.grades;
+    gr=`<div style="font-size:11px;color:var(--vellum-dim);margin-bottom:6px">
+        ${esc(g.status)} by ${esc(g.grader)}${g.confirmed_by?' · confirmed by '+esc(g.confirmed_by):''}</div>`+
+      g.grades.dimensions.map(x=>`<div class="dim"><span>${esc(x.name)}${x.overridden?' *':''} — ${esc(x.rationale)}</span>
+        <input type="number" min="0" max="10" value="${x.score}" data-dim="${esc(x.name)}" ${g.status==='confirmed'?'disabled':''}></div>`).join('')+
+      (g.grades.flags||[]).map(f=>`<div class="flagline">⚑ ${esc(f.detail||f.id)}</div>`).join('')+
+      (g.status==='proposed'?`<div style="display:flex;gap:8px;margin-top:10px;align-items:center">
+        <input id="confName" placeholder="trainer name" style="max-width:200px">
+        <button class="mini" id="confirmBtn2">Confirm grades</button></div>`:'');
+  }
+  $('dbody').innerHTML=`<div class="eyebrow">attempt ${esc(r.id)}</div>
+    <div style="font-size:12px;color:var(--vellum-dim);line-height:1.7">
+      ${esc(r.trainee)} · ${esc(r.scenario_id)} · ${new Date(r.started_at*1000).toLocaleString()}<br>
+      result: <b class="grade-${r.grade||'none'}">${r.grade?r.grade+' · '+r.score+' pts':'unresolved'}</b>
+      · satisfaction ${r.satisfaction_final??'—'} · facts ${r.facts_uncovered??'—'}/${r.facts_total??'—'}
+      · verifies ${r.verify_attempts??'—'} ${r.anti_patterns.length?'· anti-patterns: '+esc(r.anti_patterns.join(', ')):''}</div>
+    <div class="subhead">timeline</div><div class="timeline">${tl||'<span style="color:#8f8a79;font-size:12px">no events</span>'}</div>
+    <div class="subhead">reply quality (propose → human confirm)</div>${gr}`;
+  $('drawer').classList.add('open');
+  const cb=$('confirmBtn2');
+  if(cb)cb.onclick=async()=>{
+    const who=$('confName').value.trim();if(!who){$('confName').focus();return;}
+    const overrides={};
+    document.querySelectorAll('#dbody input[data-dim]').forEach(i=>{overrides[i.dataset.dim]=parseInt(i.value,10);});
+    const res=await api(`/attempts/${id}/grades/confirm`,{confirmed_by:who,overrides});
+    if(res.ok){openDetail(id);loadRows();}
+  };
+}
+
+/* ═══════════ AUTHOR — data-led wizard ═══════════ */
+let V=null; // vocab
+const D={
+  meta:{id:'',title:'',version:'1.0.0',author:'',difficulty:2,estimated_minutes:10,tags:'',source:'generic',objectives:[]},
+  ticket:{subject:'',priority:'medium',name:'',persona:'',context:'',body:''},
+  env:{name:'',egg:'minecraft-paper',memory:2048,disk:5120,cpu:100,vars:[],rules:[]},
+  fault:[],
+  conv:{persona:'',sat:40,facts:[]},
+  ver:{solutions:[],antis:[]},
+  scoring:{max_verify_attempts:5,target_minutes:10},
+};
+
+const STEPS=[
+ {id:'basics',title:'Basics',sub:'identity, difficulty, trainee-visible goals',
+  need:()=>D.meta.id&&D.meta.title&&D.meta.author},
+ {id:'ticket',title:'Ticket & customer',sub:'what lands in the queue, who wrote it',
+  need:()=>D.ticket.subject&&D.ticket.name&&D.ticket.body},
+ {id:'env',title:'Environment & physics',sub:'the training server + crash rules',
+  need:()=>D.env.name},
+ {id:'fault',title:'Fault script',sub:'what broke it before the trainee arrives',
+  need:()=>D.fault.length>0},
+ {id:'conv',title:'Customer knowledge',sub:'persona + the facts they won’t volunteer',
+  need:()=>true},
+ {id:'ver',title:'Win conditions',sub:'graded solutions + anti-patterns',
+  need:()=>D.ver.solutions.length>0},
+];
+
+function stepStates(){
+  let unlocked=true;const out=[];
+  for(const s of STEPS){out.push({...s,unlocked,done:unlocked&&!!s.need()});unlocked=unlocked&&!!s.need();}
+  return out;
+}
+function renderWizard(openId){
+  const states=stepStates();
+  $('wizard').innerHTML=states.map((s,i)=>`
+    <div class="step ${s.done?'done':''} ${s.unlocked?'':'locked'} ${s.id===openId?'open':''}" id="step-${s.id}">
+      <div class="head" data-step="${s.id}">
+        <div class="n">${s.done?'✓':i+1}</div><div class="t">${s.title}</div>
+        <div class="sub">${s.sub}</div>
+      </div>
+      <div class="body" id="body-${s.id}"></div>
+    </div>`).join('');
+  document.querySelectorAll('.step .head').forEach(h=>h.onclick=()=>{
+    const id=h.dataset.step;
+    const st=stepStates().find(x=>x.id===id);
+    if(!st.unlocked)return;
+    renderWizard(document.querySelector(`#step-${id}`).classList.contains('open')?null:id);
+  });
+  const open=states.find(s=>s.id===openId);
+  if(open&&open.unlocked)fillStep(openId);
+}
+function F(label,html,hint,req){return `<div class="f"><label>${label}${req?' <span class="req">*</span>':''}</label>${html}${hint?`<div class="hint">${hint}</div>`:''}</div>`}
+function inp(path,val,ph,type='text'){return `<input type="${type}" data-b="${path}" value="${esc(val)}" placeholder="${esc(ph||'')}">`}
+function bindInputs(root){
+  root.querySelectorAll('[data-b]').forEach(el=>{
+    el.oninput=()=>{const p=el.dataset.b.split('.');let o=D;
+      while(p.length>1)o=o[p.shift()];
+      o[p[0]]=el.type==='number'?(el.value===''?'':parseInt(el.value,10)):el.value;};
+    el.onchange=updateBadges;
+  });
+}
+let OPEN=null;
+function updateBadges(){
+  // refresh done/locked chrome WITHOUT re-rendering bodies — a re-render
+  // mid-typing destroys the focused input and eats the keystrokes
+  stepStates().forEach((s,i)=>{const el=document.getElementById('step-'+s.id);
+    if(!el)return;
+    el.classList.toggle('done',s.done);el.classList.toggle('locked',!s.unlocked);
+    el.querySelector('.n').textContent=s.done?'✓':i+1;});
+}
+
+function fillStep(id){
+  OPEN=id;const b=$('body-'+id);
+  if(id==='basics'){
+    b.innerHTML=`<div class="grid3">
+      ${F('scenario id','<input data-b="meta.id" value="'+esc(D.meta.id)+'" placeholder="oom-crash-loop-v2">','kebab-case slug; becomes the filename and analytics key. Cannot collide with a built-in.',1)}
+      ${F('title',inp('meta.title',D.meta.title,'Server won’t start — …'),'Shown to the trainee in the scenario picker.',1)}
+      ${F('author',inp('meta.author',D.meta.author,'your name'),'Recorded in the YAML for provenance.',1)}
+    </div><div class="grid4">
+      ${F('difficulty (1–5)',inp('meta.difficulty',D.meta.difficulty,'','number'),'1 = soft-skills only · 5 = multi-cause gnarl.')}
+      ${F('estimated minutes',inp('meta.estimated_minutes',D.meta.estimated_minutes,'','number'),'Sets trainee expectations in the picker.')}
+      ${F('version',inp('meta.version',D.meta.version),'Bump when you edit a published scenario.')}
+      ${F('provenance','<select data-b="meta.source">'+['generic','internal'].map(x=>`<option ${D.meta.source===x?'selected':''}>${x}</option>`).join('')+'</select>','<b>internal</b> content never ships in product mode — the provenance firewall enforces this in code.')}
+    </div>
+    ${F('tags',inp('meta.tags',D.meta.tags,'startup, jvm, tier1'),'Comma-separated; used for filtering and the case study.')}
+    <div class="subhead">Trainee-visible objectives</div>
+    <div class="hint" style="margin-bottom:6px">Shown on the mission card BEFORE the fix is found. Write what success looks like — never name the fault, the solution, or a hidden fact.</div>
+    <div id="objList">${D.meta.objectives.map((o,i)=>`<div class="kwchip">${esc(o)}<b data-oi="${i}">✕</b></div>`).join('')}</div>
+    <div style="display:flex;gap:8px;margin-top:6px"><input id="objNew" placeholder="e.g. Work out what changed before the outage"><button class="mini quiet" id="objAdd">add</button></div>`;
+    bindInputs(b);
+    $('objAdd').onclick=()=>{const v=$('objNew').value.trim();if(v){D.meta.objectives.push(v);fillStep('basics');}};
+    b.querySelectorAll('[data-oi]').forEach(x=>x.onclick=()=>{D.meta.objectives.splice(+x.dataset.oi,1);fillStep('basics');});
+  }
+  if(id==='ticket'){
+    b.innerHTML=`<div class="grid2">
+      ${F('subject',inp('ticket.subject',D.ticket.subject,'server just says offline!!'),'Verbatim customer voice — typos welcome, that’s realism.',1)}
+      ${F('priority','<select data-b="ticket.priority">'+['low','medium','high'].map(x=>`<option ${D.ticket.priority===x?'selected':''}>${x}</option>`).join('')+'</select>','What the customer picked, not what it deserves.')}
+      ${F('customer name',inp('ticket.name',D.ticket.name,'Dax'),'',1)}
+      ${F('persona','<input data-b="ticket.persona" list="personas" value="'+esc(D.ticket.persona)+'" placeholder="frustrated-novice">','Drives the customer’s voice. Pick an existing one (consistent grading) or coin a new one.')}
+    </div>
+    ${F('customer context',inp('ticket.context',D.ticket.context,'Pasted JVM flags from a YouTube video last night.'),'INTERNAL back-story for the simulated customer — the trainee never sees this directly.')}
+    ${F('ticket body','<textarea data-b="ticket.body" rows="4" placeholder="my server wont start AT ALL. it was fine yesterday…">'+esc(D.ticket.body)+'</textarea>','The opening message. Don’t volunteer the hidden facts here — that’s what diagnostic questioning is for.',1)}
+    <datalist id="personas">${(V?.personas||[]).map(p=>`<option value="${esc(p)}">`).join('')}</datalist>`;
+    bindInputs(b);
+  }
+  if(id==='env'){
+    b.innerHTML=`<div class="grid2">
+      ${F('server name',inp('env.name',D.env.name,'dax-smp'),'Shown in the mock panel header.',1)}
+      ${F('egg',inp('env.egg',D.env.egg),'Pterodactyl egg id; mock adapter treats it as a label.')}
+    </div><div class="grid3">
+      ${F('memory (MiB)',inp('env.memory',D.env.memory,'','number'),'The container limit — the heap-vs-limit physics rule uses this.')}
+      ${F('disk (MiB)',inp('env.disk',D.env.disk,'','number'),'')}
+      ${F('cpu (%)',inp('env.cpu',D.env.cpu,'','number'),'')}
+    </div>
+    <div class="subhead">Egg variables</div>
+    <div class="hint">Key/value pairs the trainee can edit in the panel (e.g. SERVER_JARFILE). A fault step or crash rule can reference these.</div>
+    ${D.env.vars.map((v,i)=>`<div class="itemcard grid2" style="padding-right:44px">
+      ${F('key','<input value="'+esc(v.k)+'" data-vk="'+i+'">')}${F('value','<input value="'+esc(v.v)+'" data-vv="'+i+'">')}
+      <button class="mini danger rm" data-vr="${i}">✕</button></div>`).join('')}
+    <button class="mini quiet" id="varAdd">+ variable</button>
+    <div class="subhead">Crash rules (mock physics)</div>
+    <div class="hint">Declarative: conditions under which the server CANNOT hold “running”. This is what makes a temp fix temp and a root cause real — without at least one rule tied to your fault, the server never crashes.</div>
+    ${D.env.rules.map((r,i)=>`<div class="itemcard grid3" style="padding-right:44px">
+      ${F('when','<select data-rw="'+i+'">'+(V?.crash_rules||[]).map(x=>`<option ${r.when===x?'selected':''}>${x}</option>`).join('')+'</select>','startup_contains/matches watch the command; variable_equals watches a variable; heap_exceeds_limit is automatic vs memory limit.')}
+      ${F('value','<input value="'+esc(r.value||'')+'" data-rv="'+i+'">','Substring, regex, or the variable value to match.')}
+      ${F('key (variables only)','<input value="'+esc(r.key||'')+'" data-rk="'+i+'">','Variable name for variable_equals.')}
+      <button class="mini danger rm" data-rr="${i}">✕</button></div>`).join('')}
+    <button class="mini quiet" id="ruleAdd">+ crash rule</button>`;
+    bindInputs(b);
+    $('varAdd').onclick=()=>{D.env.vars.push({k:'',v:''});fillStep('env');};
+    $('ruleAdd').onclick=()=>{D.env.rules.push({when:'startup_contains',value:'',key:''});fillStep('env');};
+    b.querySelectorAll('[data-vk]').forEach(x=>x.oninput=()=>D.env.vars[+x.dataset.vk].k=x.value);
+    b.querySelectorAll('[data-vv]').forEach(x=>x.oninput=()=>D.env.vars[+x.dataset.vv].v=x.value);
+    b.querySelectorAll('[data-vr]').forEach(x=>x.onclick=()=>{D.env.vars.splice(+x.dataset.vr,1);fillStep('env');});
+    b.querySelectorAll('[data-rw]').forEach(x=>x.onchange=()=>D.env.rules[+x.dataset.rw].when=x.value);
+    b.querySelectorAll('[data-rv]').forEach(x=>x.oninput=()=>D.env.rules[+x.dataset.rv].value=x.value);
+    b.querySelectorAll('[data-rk]').forEach(x=>x.oninput=()=>D.env.rules[+x.dataset.rk].key=x.value);
+    b.querySelectorAll('[data-rr]').forEach(x=>x.onclick=()=>{D.env.rules.splice(+x.dataset.rr,1);fillStep('env');});
+  }
+  if(id==='fault'){
+    const spec=V?.fault_verbs||{};
+    b.innerHTML=`<div class="hint" style="margin:8px 0">The fault script runs ONCE at attempt start — it is the “what actually happened” the trainee reverse-engineers. Order matters. End with <b>start_server</b> + <b>wait</b> if the ticket says it crashed after boot.</div>
+    ${D.fault.map((s,i)=>{const sp=spec[s.action]||{fields:[],hint:''};
+      return `<div class="itemcard" style="padding-right:44px">
+      ${F('step '+(i+1)+' — action','<select data-fa="'+i+'">'+Object.keys(spec).map(v=>`<option ${s.action===v?'selected':''}>${v}</option>`).join('')+'</select>',esc(sp.hint))}
+      <div class="grid3">${sp.fields.map(f=>F(f,'<input value="'+esc(s[f]??'')+'" data-ff="'+i+':'+f+'" '+(['seconds','memory','disk','cpu'].includes(f)?'type="number"':'')+'>')).join('')}</div>
+      <button class="mini danger rm" data-fr="${i}">✕</button></div>`;}).join('')}
+    <button class="mini quiet" id="faultAdd">+ fault step</button>`;
+    $('faultAdd').onclick=()=>{D.fault.push({action:'set_startup_command'});fillStep('fault');};
+    b.querySelectorAll('[data-fa]').forEach(x=>x.onchange=()=>{D.fault[+x.dataset.fa]={action:x.value};fillStep('fault');});
+    b.querySelectorAll('[data-ff]').forEach(x=>x.oninput=()=>{const[i,f]=x.dataset.ff.split(':');
+      D.fault[+i][f]=x.type==='number'?(x.value===''?null:parseInt(x.value,10)):x.value;});
+    b.querySelectorAll('[data-fr]').forEach(x=>x.onclick=()=>{D.fault.splice(+x.dataset.fr,1);fillStep('fault');});
+  }
+  if(id==='conv'){
+    b.innerHTML=`<div class="grid3">
+      ${F('persona','<input data-b="conv.persona" list="personas2" value="'+esc(D.conv.persona)+'" placeholder="same as ticket persona">','Usually matches the ticket persona.')}
+      ${F('satisfaction start (0–100)',inp('conv.sat',D.conv.sat,'','number'),'Where the meter begins. 30–45 for an angry opener; escalation fires at 0.')}
+    </div>
+    <div class="subhead">Hidden facts</div>
+    <div class="hint" style="margin-bottom:4px">The heart of the scenario: things the customer knows but <b>never volunteers</b>. A fact is revealed when the trainee’s reply contains any keyword. Use short <b>stems</b> (“chang” matches change/changed/changing). The fact text itself is what the customer then admits — written in their voice.</div>
+    ${D.conv.facts.map((f,i)=>`<div class="itemcard" style="padding-right:44px">
+      <div class="grid2">${F('fact id','<input value="'+esc(f.id)+'" data-hi="'+i+'">','Short slug; shows in debrief as uncovered/missed.')}
+      ${F('reveal keywords','<input value="'+esc((f.keywords||[]).join(', '))+'" data-hk="'+i+'" placeholder="chang, startup, flag">','Comma-separated stems. Test them: would YOUR diagnostic question hit one?')}</div>
+      ${F('the fact','<textarea rows="2" data-hf="'+i+'">'+esc(f.fact)+'</textarea>','What the customer admits when asked right.')}
+      <button class="mini danger rm" data-hr="${i}">✕</button></div>`).join('')}
+    <button class="mini quiet" id="factAdd">+ hidden fact</button>
+    <datalist id="personas2">${(V?.personas||[]).map(p=>`<option value="${esc(p)}">`).join('')}</datalist>`;
+    bindInputs(b);
+    $('factAdd').onclick=()=>{D.conv.facts.push({id:'',fact:'',keywords:[]});fillStep('conv');};
+    b.querySelectorAll('[data-hi]').forEach(x=>x.oninput=()=>D.conv.facts[+x.dataset.hi].id=x.value);
+    b.querySelectorAll('[data-hk]').forEach(x=>x.oninput=()=>D.conv.facts[+x.dataset.hk].keywords=x.value.split(',').map(s=>s.trim()).filter(Boolean));
+    b.querySelectorAll('[data-hf]').forEach(x=>x.oninput=()=>D.conv.facts[+x.dataset.hf].fact=x.value);
+    b.querySelectorAll('[data-hr]').forEach(x=>x.onclick=()=>{D.conv.facts.splice(+x.dataset.hr,1);fillStep('conv');});
+  }
+  if(id==='ver'){
+    b.innerHTML=`<div class="hint" style="margin:8px 0">Completion is a <b>state machine, never an LLM judgment</b>: a solution matches when ALL its assertions hold. Grade the ladder — <b>full</b> for root cause, <b>temp</b> for the workaround you expect trainees to reach first. Add a <b>server_state running</b> assertion with <b>stable_for_seconds: 60</b> to every solution or an instant flicker counts as fixed.</div>
+    <div class="subhead">Solutions</div>
+    ${D.ver.solutions.map((s,i)=>solCard(s,i,false)).join('')}
+    <button class="mini quiet" id="solAdd">+ solution</button>
+    <div class="subhead">Anti-patterns</div>
+    <div class="hint">Historical: read from the activity log, so they penalise even after an undo (e.g. a reinstall). Penalty subtracts from the matched score.</div>
+    ${D.ver.antis.map((s,i)=>solCard(s,i,true)).join('')}
+    <button class="mini quiet" id="apAdd">+ anti-pattern</button>
+    <div class="grid3" style="margin-top:12px">
+      ${F('max verify attempts',inp('scoring.max_verify_attempts',D.scoring.max_verify_attempts,'','number'),'The “Check my work” budget. 5 is the house norm.')}
+      ${F('target minutes',inp('scoring.target_minutes',D.scoring.target_minutes,'','number'),'For the analytics, not a hard cutoff.')}
+    </div>`;
+    bindInputs(b);
+    $('solAdd').onclick=()=>{D.ver.solutions.push({id:'',grade:'full',score:100,label:'',feedback:'',assertions:[]});fillStep('ver');};
+    $('apAdd').onclick=()=>{D.ver.antis.push({id:'',penalty:30,feedback:'',assertions:[]});fillStep('ver');};
+    wireSolCards(b);
+  }
+}
+function solCard(s,i,anti){
+  const spec=V?.assertion_types||{};
+  const pre=anti?'ap':'sol';
+  return `<div class="itemcard" style="padding-right:44px">
+    <div class="grid4">
+      ${F('id','<input value="'+esc(s.id)+'" data-'+pre+'i="'+i+'">','Slug; appears in debrief.')}
+      ${anti?F('penalty','<input type="number" value="'+esc(s.penalty)+'" data-api2="'+i+'">','Subtracted from the matched score.')
+            :F('grade','<select data-solg="'+i+'">'+(V?.grades||[]).map(g=>`<option ${s.grade===g?'selected':''}>${g}</option>`).join('')+'</select>','full &gt; partial &gt; temp; highest matching wins.')}
+      ${anti?'':F('score','<input type="number" value="'+esc(s.score)+'" data-sols="'+i+'">','0–100 before penalties.')}
+      ${anti?'':F('label','<input value="'+esc(s.label)+'" data-soll="'+i+'">','One line shown in the debrief.')}
+    </div>
+    ${F('feedback','<textarea rows="2" data-'+pre+'f="'+i+'">'+esc(s.feedback||'')+'</textarea>','Teaching moment shown after the attempt — explain the WHY.')}
+    <div class="subhead" style="font-size:10px">assertions (ALL must hold)</div>
+    ${(s.assertions||[]).map((a,j)=>{const sp=spec[a.type]||{fields:[],hint:''};
+      return `<div class="itemcard" style="border-style:solid;padding-right:44px">
+      ${F('type','<select data-'+pre+'at="'+i+':'+j+'">'+Object.keys(spec).map(t=>`<option ${a.type===t?'selected':''}>${t}</option>`).join('')+'</select>',esc(sp.hint))}
+      <div class="grid4">${sp.fields.map(f=>{
+        if(f==='operator')return F('operator','<select data-'+pre+'af="'+i+':'+j+':operator">'+(V?.operators||[]).map(o=>`<option ${a.operator===o?'selected':''}>${o}</option>`).join('')+'</select>');
+        return F(f,'<input value="'+esc(a[f]??'')+'" data-'+pre+'af="'+i+':'+j+':'+f+'" '+(f==='stable_for_seconds'?'type="number" placeholder="60"':'')+'>');
+      }).join('')}</div>
+      <button class="mini danger rm" data-${pre}ar="${i}:${j}">✕</button></div>`;}).join('')}
+    <button class="mini quiet" data-${pre}aa="${i}">+ assertion</button>
+    <button class="mini danger rm" data-${pre}r="${i}">✕</button></div>`;
+}
+function wireSolCards(b){
+  const list=anti=>anti?D.ver.antis:D.ver.solutions;
+  for(const anti of [false,true]){
+    const pre=anti?'ap':'sol';
+    b.querySelectorAll(`[data-${pre}i]`).forEach(x=>x.oninput=()=>list(anti)[+x.dataset[pre+'i']].id=x.value);
+    b.querySelectorAll(`[data-${pre}f]`).forEach(x=>x.oninput=()=>list(anti)[+x.dataset[pre+'f']].feedback=x.value);
+    b.querySelectorAll(`[data-${pre}r]`).forEach(x=>x.onclick=()=>{list(anti).splice(+x.dataset[pre+'r'],1);fillStep('ver');});
+    b.querySelectorAll(`[data-${pre}aa]`).forEach(x=>x.onclick=()=>{list(anti)[+x.dataset[pre+'aa']].assertions.push({type:'server_state',operator:'equals',expected:'running'});fillStep('ver');});
+    b.querySelectorAll(`[data-${pre}at]`).forEach(x=>x.onchange=()=>{const[i,j]=x.dataset[pre+'at'].split(':');
+      list(anti)[+i].assertions[+j]={type:x.value};fillStep('ver');});
+    b.querySelectorAll(`[data-${pre}af]`).forEach(x=>{
+      const h=()=>{const[i,j,f]=x.dataset[pre+'af'].split(':');
+        const v=x.type==='number'?(x.value===''?null:parseInt(x.value,10)):x.value;
+        list(anti)[+i].assertions[+j][f]=v;};
+      x.oninput=h;x.onchange=h;});
+  }
+  b.querySelectorAll('[data-solg]').forEach(x=>x.onchange=()=>D.ver.solutions[+x.dataset.solg].grade=x.value);
+  b.querySelectorAll('[data-sols]').forEach(x=>x.oninput=()=>D.ver.solutions[+x.dataset.sols].score=parseInt(x.value||'0',10));
+  b.querySelectorAll('[data-soll]').forEach(x=>x.oninput=()=>D.ver.solutions[+x.dataset.soll].label=x.value);
+  b.querySelectorAll('[data-api2]').forEach(x=>x.oninput=()=>D.ver.antis[+x.dataset.api2].penalty=parseInt(x.value||'0',10));
+}
+
+function compose(){
+  const num=(v,d)=>Number.isFinite(+v)&&v!==''?+v:d;
+  const strip=o=>Object.fromEntries(Object.entries(o).filter(([,v])=>v!==''&&v!==null&&v!==undefined));
+  return {
+    schema_version:2,
+    metadata:{id:D.meta.id,title:D.meta.title,version:D.meta.version||'1.0.0',
+      author:D.meta.author,provenance:{created:new Date().toISOString().slice(0,10),
+      source:D.meta.source,licence:'proprietary'},difficulty:num(D.meta.difficulty,2),
+      tags:D.meta.tags.split(',').map(s=>s.trim()).filter(Boolean),
+      estimated_minutes:num(D.meta.estimated_minutes,10),objectives:D.meta.objectives},
+    panel:{adapter:'mock',min_version:'1.11'},
+    ticket:{subject:D.ticket.subject,priority:D.ticket.priority,
+      customer:strip({name:D.ticket.name,persona:D.ticket.persona||'frustrated-novice',context:D.ticket.context}),
+      body:D.ticket.body},
+    environment:{server:{name:D.env.name,egg:D.env.egg,
+        limits:{memory:num(D.env.memory,1024),disk:num(D.env.disk,5120),cpu:num(D.env.cpu,100)},
+        variables:Object.fromEntries(D.env.vars.filter(v=>v.k).map(v=>[v.k,v.v]))},
+      mock_physics:D.env.rules.map(r=>strip({when:r.when,value:r.value,key:r.key}))},
+    fault:{steps:D.fault.map(s=>strip({...s}))},
+    conversation:{persona:D.conv.persona||D.ticket.persona||'frustrated-novice',
+      satisfaction_start:num(D.conv.sat,50),never_volunteers:true,
+      hidden_facts:D.conv.facts.map(f=>({id:f.id,fact:f.fact,reveal_keywords:f.keywords}))},
+    verification:{poll_interval_seconds:10,
+      solutions:D.ver.solutions.map(s=>({id:s.id,grade:s.grade,score:num(s.score,100),
+        label:s.label,feedback:s.feedback,assertions:s.assertions.map(a=>strip({...a}))})),
+      anti_patterns:D.ver.antis.map(s=>({id:s.id,penalty:num(s.penalty,30),
+        feedback:s.feedback,assertions:s.assertions.map(a=>strip({...a}))}))},
+    scoring:{max_verify_attempts:num(D.scoring.max_verify_attempts,5),
+      target_minutes:num(D.scoring.target_minutes,10)},
+    teardown:{policy:'on_pass_or_expiry',expiry_minutes:60},
+  };
+}
+async function runValidate(){
+  $('verrors').style.display='none';$('vok').style.display='none';
+  const r=await api('/authoring/validate',{scenario:compose()}).then(r=>r.json());
+  if(r.valid){$('vok').textContent='✓ draft is valid — the engine accepts it';$('vok').style.display='block';}
+  else{$('verrlist').innerHTML=r.errors.map(e=>`<div class="e"><b>${esc(e.loc)}</b> — ${esc(e.msg)}</div>`).join('');
+    $('verrors').style.display='block';}
+  return r.valid;
+}
+$('validateBtn').onclick=runValidate;
+$('previewBtn').onclick=()=>{const p=$('preview');
+  p.style.display=p.style.display==='none'?'block':'none';
+  p.textContent=JSON.stringify(compose(),null,1);};
+$('publishBtn').onclick=async()=>{
+  if(!await runValidate())return;
+  const res=await api('/authoring/scenarios',{scenario:compose()});
+  if(res.status===201){const j=await res.json();
+    $('vok').textContent=`✓ published — “${j.id}” is live in the trainee picker right now${j.replaced?' (replaced previous version)':''}`;
+    $('vok').style.display='block';loadStats();}
+  else{const j=await res.json().catch(()=>({detail:'publish failed'}));
+    $('verrlist').innerHTML=`<div class="e"><b>publish</b> — ${esc(JSON.stringify(j.detail))}</div>`;
+    $('verrors').style.display='block';}
+};
+
+/* init */
+(async()=>{V=await fetch('/authoring/vocab').then(r=>r.json());
+  renderWizard('basics');loadStats();loadRows();})();
+</script>
+</body>
+</html>

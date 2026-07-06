@@ -20,6 +20,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS attempts (
   id TEXT PRIMARY KEY,
   scenario_id TEXT NOT NULL,
+  trainee TEXT NOT NULL DEFAULT 'anonymous',
   started_at REAL NOT NULL,
   finished_at REAL,
   complete INTEGER,
@@ -57,17 +58,49 @@ class AttemptStore:
         self._conn = sqlite3.connect(str(db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
+        # migration for pre-trainee databases (SQLite has no IF NOT EXISTS
+        # for columns; the duplicate-column error is the "already migrated" signal)
+        try:
+            self._conn.execute(
+                "ALTER TABLE attempts ADD COLUMN trainee TEXT NOT NULL DEFAULT 'anonymous'")
+        except sqlite3.OperationalError:
+            pass
         self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
 
     # ── attempts ──
-    def start_attempt(self, attempt_id: str, scenario_id: str) -> None:
+    def start_attempt(self, attempt_id: str, scenario_id: str,
+                      trainee: str = "anonymous") -> None:
         self._conn.execute(
-            "INSERT OR IGNORE INTO attempts (id, scenario_id, started_at) "
-            "VALUES (?,?,?)", (attempt_id, scenario_id, time.time()))
+            "INSERT OR IGNORE INTO attempts (id, scenario_id, trainee, started_at) "
+            "VALUES (?,?,?,?)", (attempt_id, scenario_id, trainee, time.time()))
         self._conn.commit()
+
+    def list_attempts(self, scenario_id: str | None = None,
+                      trainee: str | None = None, limit: int = 200) -> list[dict]:
+        """Trainer-facing listing, newest first, with the grade-review status
+        joined in so a 'needs review' queue is one query."""
+        q = ("SELECT a.*, g.status AS grades_status, g.confirmed_by "
+             "FROM attempts a LEFT JOIN grades g ON g.attempt_id = a.id")
+        conds, args = [], []
+        if scenario_id:
+            conds.append("a.scenario_id=?")
+            args.append(scenario_id)
+        if trainee:
+            conds.append("a.trainee=?")
+            args.append(trainee)
+        if conds:
+            q += " WHERE " + " AND ".join(conds)
+        q += " ORDER BY a.started_at DESC LIMIT ?"
+        args.append(max(1, min(int(limit), 1000)))
+        out = []
+        for r in self._conn.execute(q, args).fetchall():
+            d = dict(r)
+            d["anti_patterns"] = json.loads(d["anti_patterns"] or "[]")
+            out.append(d)
+        return out
 
     def finalize(self, attempt_id: str, debrief: dict) -> None:
         t, c = debrief["technical"], debrief["conversation"]

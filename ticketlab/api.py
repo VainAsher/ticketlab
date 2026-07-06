@@ -10,11 +10,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+import yaml
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
-from ticketlab.schema import load_scenario, Scenario
+from ticketlab.schema import (load_scenario, load_scenario_from_dict, Scenario,
+                              FAULT_VERBS, ASSERTION_TYPES, OPERATORS, GRADE_RANK)
 from ticketlab.orchestrator import Orchestrator
 from ticketlab.store import AttemptStore
 from ticketlab.grader import GraderRunner
@@ -55,6 +57,48 @@ class ConfirmGradesReq(BaseModel):
     overrides: dict[str, int] = Field(default_factory=dict)
 
 
+class ScenarioDraft(BaseModel):
+    scenario: dict
+
+
+def _identity(request: Request) -> str:
+    """Trainee identity from the Authentik forward-auth headers Traefik
+    injects. Absent (local dev, tests) -> 'anonymous'. Never trusted for
+    authorization — attribution only."""
+    return (request.headers.get("x-authentik-username")
+            or request.headers.get("x-authentik-email")
+            or "anonymous")[:100]
+
+
+# Per-verb / per-assertion field requirements + authoring hints. Served by
+# /authoring/vocab so the trainer form is generated from the same source of
+# truth as the schema whitelist — the two cannot drift apart silently.
+FAULT_VERB_SPEC = {
+    "set_startup_command": {"fields": ["value"], "hint": "Replace the server's startup command — the classic 'customer pasted something' fault."},
+    "set_variable": {"fields": ["key", "value"], "hint": "Set an egg variable (e.g. SERVER_JARFILE) to a broken value."},
+    "set_limits": {"fields": ["memory", "disk", "cpu"], "hint": "Change container limits. Only fill the ones you want to change."},
+    "write_file": {"fields": ["path", "content"], "hint": "Plant a file on the server (e.g. a corrupt config)."},
+    "delete_file": {"fields": ["path"], "hint": "Remove a file the server needs."},
+    "reassign_allocation": {"fields": [], "hint": "Not modelled in the mock adapter yet — avoid for now."},
+    "start_server": {"fields": [], "hint": "Power on (crash rules apply — an impossible start ends offline)."},
+    "stop_server": {"fields": [], "hint": "Power off cleanly."},
+    "kill_server": {"fields": [], "hint": "Hard kill."},
+    "suspend_server": {"fields": [], "hint": "Suspend (billing-style). Trainee must Unsuspend before Start works."},
+    "wait": {"fields": ["seconds"], "hint": "Let simulated time pass between steps."},
+}
+ASSERTION_SPEC = {
+    "server_state": {"fields": ["operator", "expected", "stable_for_seconds"], "hint": "Power state check. Use stable_for_seconds to demand it HOLDS (uptime-anchored) — 60s is the house norm."},
+    "startup_command": {"fields": ["operator", "expected"], "hint": "Check the startup command text (contains / not_contains / matches regex)."},
+    "variable_equals": {"fields": ["field", "operator", "expected"], "hint": "Check an egg variable. 'field' is the variable name."},
+    "limits_check": {"fields": ["field", "operator", "expected"], "hint": "Check a container limit (field: memory/disk/cpu; gte/lte for thresholds)."},
+    "file_contains": {"fields": ["field", "expected"], "hint": "File at path 'field' must contain 'expected'."},
+    "file_absent": {"fields": ["field"], "hint": "File at path 'field' must not exist."},
+    "activity_occurred": {"fields": ["event"], "hint": "Something must have happened, ever (reads the activity log — good for 'they unsuspended it': server:suspension.update)."},
+    "activity_absent": {"fields": ["event"], "hint": "Something must NEVER have happened (good for anti-patterns)."},
+    "allocation_check": {"fields": [], "hint": "Not modelled in the mock adapter — always passes. Avoid."},
+}
+
+
 def create_app(scenario_dir: str = "scenarios", llm=None,
                demo_mode: bool = True, grader=None,
                db_path: str | Path = "ticketlab.db") -> FastAPI:
@@ -68,6 +112,17 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
     for p in sorted(Path(scenario_dir).glob("*.yaml")):
         s = load_scenario(p)
         scenarios[s.metadata.id] = s
+    builtin_ids = frozenset(scenarios)
+
+    # Trainer-authored scenarios live NEXT TO THE DB (a volume in Docker), not
+    # in the baked image dir — they must survive a redeploy. Loaded after the
+    # builtins; an authored id never shadows a builtin (publish rejects it).
+    authored_dir = Path(db_path).parent / "scenarios-authored"
+    authored_dir.mkdir(parents=True, exist_ok=True)
+    for p in sorted(authored_dir.glob("*.yaml")):
+        s = load_scenario(p)
+        if s.metadata.id not in builtin_ids:
+            scenarios[s.metadata.id] = s
 
     @app.get("/scenarios")
     def list_scenarios():
@@ -77,11 +132,11 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
                 for s in scenarios.values()]
 
     @app.post("/attempts", status_code=201)
-    def create_attempt(req: CreateAttemptReq):
+    def create_attempt(req: CreateAttemptReq, request: Request):
         s = scenarios.get(req.scenario_id)
         if s is None:
             raise HTTPException(404, "unknown scenario")
-        a = orch.create_attempt(s)
+        a = orch.create_attempt(s, trainee=_identity(request))
         return {
             "attempt_id": a.id,
             "ticket": {  # explicit allowlist — never model_dump the scenario
@@ -166,6 +221,83 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
                           status="confirmed", confirmed_by=req.confirmed_by)
         return store.get_grades(attempt_id)
 
+    # ── trainer surface: monitoring ──
+    @app.get("/trainer/scenarios")
+    def trainer_scenarios():
+        return [{"id": s.metadata.id, "title": s.metadata.title,
+                 "difficulty": s.metadata.difficulty, "tags": s.metadata.tags,
+                 "estimated_minutes": s.metadata.estimated_minutes,
+                 "version": s.metadata.version,
+                 "origin": "builtin" if s.metadata.id in builtin_ids else "authored",
+                 "facts_total": len(s.conversation.hidden_facts),
+                 "solutions": [{"id": sol.id, "grade": sol.grade,
+                                "score": sol.score, "label": sol.label}
+                               for sol in s.verification.solutions]}
+                for s in scenarios.values()]
+
+    @app.get("/trainer/attempts")
+    def trainer_attempts(scenario_id: str | None = None,
+                         trainee: str | None = None, limit: int = 200):
+        return store.list_attempts(scenario_id=scenario_id, trainee=trainee,
+                                   limit=limit)
+
+    @app.get("/trainer/attempts/{attempt_id}")
+    def trainer_attempt_detail(attempt_id: str):
+        rec = store.get_record(attempt_id)
+        if rec is None:
+            raise HTTPException(404, "unknown attempt")
+        return {"record": rec, "events": store.events(attempt_id),
+                "grades": store.get_grades(attempt_id)}
+
+    # ── trainer surface: authoring ──
+    @app.get("/authoring/vocab")
+    def authoring_vocab():
+        personas = sorted({s.conversation.persona for s in scenarios.values()}
+                          | {s.ticket.customer.persona for s in scenarios.values()})
+        return {
+            "fault_verbs": {v: FAULT_VERB_SPEC.get(v, {"fields": [], "hint": ""})
+                            for v in sorted(FAULT_VERBS)},
+            "assertion_types": {t: ASSERTION_SPEC.get(t, {"fields": [], "hint": ""})
+                                for t in sorted(ASSERTION_TYPES)},
+            "operators": sorted(OPERATORS),
+            "grades": list(GRADE_RANK),        # temp < partial < full
+            "personas": personas,
+            "crash_rules": ["startup_contains", "startup_matches",
+                            "variable_equals", "heap_exceeds_limit"],
+            "adapters": ["mock"],              # panel adapters arrive post-MVP
+            "provenance_sources": ["generic", "internal"],
+        }
+
+    def _validate_draft(raw: dict) -> tuple[Scenario | None, list[dict]]:
+        try:
+            return load_scenario_from_dict(raw), []
+        except ValidationError as e:
+            return None, [{"loc": ".".join(str(x) for x in err["loc"]),
+                           "msg": err["msg"]} for err in e.errors()]
+
+    @app.post("/authoring/validate")
+    def authoring_validate(req: ScenarioDraft):
+        s, errors = _validate_draft(req.scenario)
+        if s is not None and s.metadata.id in builtin_ids:
+            errors.append({"loc": "metadata.id",
+                           "msg": "id collides with a built-in scenario"})
+        return {"valid": not errors, "errors": errors}
+
+    @app.post("/authoring/scenarios", status_code=201)
+    def authoring_publish(req: ScenarioDraft):
+        s, errors = _validate_draft(req.scenario)
+        if s is None:
+            raise HTTPException(422, detail=errors)
+        if s.metadata.id in builtin_ids:
+            raise HTTPException(409, "id collides with a built-in scenario")
+        path = authored_dir / f"{s.metadata.id}.yaml"
+        replaced = path.exists()
+        path.write_text(yaml.safe_dump(req.scenario, sort_keys=False,
+                                       allow_unicode=True), encoding="utf-8")
+        scenarios[s.metadata.id] = s   # live immediately, no restart
+        return {"id": s.metadata.id, "replaced": replaced,
+                "path": path.name}
+
     if demo_mode:
         @app.post("/attempts/{attempt_id}/demo/mutate")
         def demo_mutate(attempt_id: str, req: MutateReq):
@@ -214,5 +346,11 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
         @app.get("/")
         def index():
             return FileResponse(frontend)
+
+    trainer_page = Path(__file__).parent.parent / "frontend" / "trainer.html"
+    if trainer_page.exists():
+        @app.get("/trainer")
+        def trainer():
+            return FileResponse(trainer_page)
 
     return app

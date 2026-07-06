@@ -42,7 +42,8 @@ class Orchestrator:
         self._max_attempts = max_attempts
         self._store = store   # AttemptStore or None; records outlive eviction
 
-    def create_attempt(self, scenario: Scenario) -> Attempt:
+    def create_attempt(self, scenario: Scenario,
+                       trainee: str = "anonymous") -> Attempt:
         if scenario.panel.adapter != "mock":
             # A lying test environment is worse than a missing one: never run
             # a panel-targeted scenario against the mock silently. (REVIEW A4)
@@ -67,7 +68,8 @@ class Orchestrator:
         attempt._last_seen_snapshot = adapter.snapshot()
         self._attempts[attempt.id] = attempt
         if self._store:
-            self._store.start_attempt(attempt.id, scenario.metadata.id)
+            self._store.start_attempt(attempt.id, scenario.metadata.id,
+                                      trainee=trainee)
         return attempt
 
     def get(self, attempt_id: str) -> Attempt | None:
