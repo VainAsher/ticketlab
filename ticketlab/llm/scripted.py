@@ -22,8 +22,13 @@ _PERSONA_OPENERS = {
 
 
 class ScriptedLLM:
+    """Tone only: the numeric reward for state changes and earned facts is
+    the engine's `_baseline_delta` (same signal for every LLM backend), so
+    this class just picks phrasing and a small mood nudge for the case
+    nothing observable happened at all."""
+
     def customer_turn(self, ctx: TurnContext) -> LLMTurn:
-        delta = 0
+        tone = 0
         parts: list[str] = []
 
         online = any("online" in e.lower() for e in ctx.state_events)
@@ -32,29 +37,25 @@ class ScriptedLLM:
         offline = any("offline" in e.lower() for e in ctx.state_events)
 
         if data_loss:
-            delta -= 20
             parts.append("Hang on — my files are GONE. Did you just reinstall my "
                          "server?! All my mod configs are wiped.")
         if online:
-            delta += 15
             parts.append("Okay... it's actually staying up now. What did you do?")
         if offline:
-            delta -= 10
             parts.append("And now it's gone down again.")
-
         if ctx.earned_facts:
-            delta += 5  # being asked good questions feels like being heard
             for fact in ctx.earned_facts:
                 parts.append(f"Now that you mention it — {fact.lower()}.")
 
         if not parts:
             # nothing observable changed and no fact earned: persona grumble
-            delta -= 2
+            tone = -2
             parts.append("Right, but is anyone actually going to FIX it? "
                          "I still think it's your hardware.")
 
-        mood = "pleased" if delta > 0 else "annoyed" if delta < 0 else "neutral"
+        pleased = (online or ctx.earned_facts) and not data_loss
+        mood = "pleased" if pleased else "annoyed" if (data_loss or offline or tone < 0) else "neutral"
         opener = _PERSONA_OPENERS.get(ctx.persona, {}).get(mood, "")
         return LLMTurn(reply=opener + " ".join(parts),
                        facts_revealed=[],   # scripted path: engine already decided
-                       satisfaction_delta=delta)
+                       satisfaction_delta=tone)

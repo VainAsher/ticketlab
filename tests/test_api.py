@@ -128,6 +128,23 @@ def test_authored_objectives_served_and_leak_free(client):
     assert "remove-bad-flags" not in dumped  # solution id
 
 
+def test_attempt_state_resumes_thread_and_progress(client):
+    aid = start(client)
+    client.post(f"/attempts/{aid}/message",
+               json={"text": "any errors in your console?"})
+    st = client.get(f"/attempts/{aid}/state").json()
+    assert st["attempt_id"] == aid
+    assert st["scenario"]["facts_total"] == 2
+    assert len(st["thread"]) == 2   # trainee msg + customer reply
+    assert st["thread"][0]["role"] == "trainee"
+    dumped = str(st)
+    assert "Xmx4096" not in dumped and "right-size-heap" not in dumped
+
+
+def test_attempt_state_404_for_unknown_attempt(client):
+    assert client.get("/attempts/does-not-exist/state").status_code == 404
+
+
 def test_message_length_capped(client):
     aid = start(client)
     r = client.post(f"/attempts/{aid}/message", json={"text": "x" * 100_000})

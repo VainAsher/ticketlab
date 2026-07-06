@@ -18,6 +18,28 @@ MAX_DELTA_PER_TURN = 25
 MAX_TRAINEE_MESSAGE_CHARS = 4000
 
 
+def _baseline_delta(state_events: list[str], earned_ids: list[str]) -> int:
+    """Deterministic, engine-owned satisfaction signal — independent of which
+    LLM renders prose this turn. Without this, a good diagnostic question or
+    a real fix only helps mood if the LLM's free-form tone judgement happens
+    to agree; in practice a 'frustrated' persona skews negative turn after
+    turn regardless of trainee performance, so satisfaction only ever fell.
+    This guarantees the trainee sees SOME credit for earning a fact or fixing
+    the server even on a sour-toned LLM turn — and a cheerful-toned reply
+    can't fully paper over data loss."""
+    events = " ".join(state_events).lower()
+    delta = 0
+    if "reinstall" in events or "data" in events:
+        delta -= 20
+    if "online" in events:
+        delta += 15
+    if "offline" in events:
+        delta -= 10
+    if earned_ids:
+        delta += 5
+    return delta
+
+
 @dataclass
 class ConversationState:
     satisfaction: int
@@ -95,8 +117,9 @@ class ConversationEngine:
         allowed_reveals = [i for i in turn.facts_revealed if i in earned_ids]
         final_reveals = sorted(set(allowed_reveals) | set(earned_ids))
 
+        baseline = _baseline_delta(state_events, earned_ids)
         delta = max(-MAX_DELTA_PER_TURN, min(MAX_DELTA_PER_TURN,
-                                             turn.satisfaction_delta))
+                                             baseline + turn.satisfaction_delta))
         self.state.satisfaction = max(0, min(100, self.state.satisfaction + delta))
         self.state.revealed.update(final_reveals)
         if self.state.satisfaction <= 0:

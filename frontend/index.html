@@ -15,6 +15,10 @@
   --mono:'IBM Plex Mono',monospace; --serif:'Instrument Serif',serif;
 }
 *{box-sizing:border-box;margin:0}
+/* author rules setting display: on a class otherwise beat the UA [hidden]
+   rule even though hidden is set — e.g. .composer{display:flex} always won.
+   Force hidden to actually hide, regardless of what else targets the element. */
+[hidden]{display:none!important}
 body{background:var(--slate);color:var(--vellum);font-family:var(--mono);font-size:14px;min-height:100vh}
 header{display:flex;justify-content:space-between;align-items:baseline;
   padding:18px 28px;border-bottom:1px solid var(--slate3)}
@@ -97,6 +101,8 @@ input[type=text],input[type=number]{background:var(--slate);border:1px solid var
   color:var(--vellum);font-family:var(--mono);font-size:12px;padding:8px;width:100%}
 label{font-size:11px;color:var(--vellum-dim);display:block;margin:10px 0 4px}
 .btnrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+button.mini{padding:6px 11px;font-size:11px}
+.attemptbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
 #debrief{display:none}
 .debrief-grade{font-family:var(--serif);font-size:34px;color:var(--brass-bright)}
 .debrief-block{border-top:1px solid var(--slate3);padding-top:10px;margin-top:10px;line-height:1.6}
@@ -116,10 +122,19 @@ label{font-size:11px;color:var(--vellum-dim);display:block;margin:10px 0 4px}
 <main>
   <section class="ticket">
     <div class="eyebrow">Ticket</div>
-    <div class="tcard" id="tcard"><div class="subj">Pick a scenario to begin</div>
+    <div class="tcard" id="picker"><div class="subj">Pick a scenario to begin</div>
       <div class="meta" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
         <select id="scenSel" style="background:var(--slate2);color:var(--vellum);border:1px solid var(--slate3);font-family:var(--mono);font-size:12px;padding:8px"></select>
         <button id="startBtn">Start attempt</button></div></div>
+    <div class="tcard" id="activeCard" hidden>
+      <div class="subj" id="activeSubj"></div>
+      <div class="meta" id="activeMeta"></div>
+    </div>
+    <div class="attemptbar" id="attemptbar" hidden>
+      <button class="quiet mini" id="newScenBtn">↩ New scenario</button>
+      <button class="quiet mini" id="restartBtn">⟳ Restart this scenario</button>
+      <button class="danger mini" id="giveupBtn">✕ Give up / end attempt</button>
+    </div>
     <div class="mission" id="mission" hidden>
       <div class="eyebrow">Mission</div>
       <div class="mmeta" id="mmeta"></div>
@@ -171,8 +186,9 @@ label{font-size:11px;color:var(--vellum-dim);display:block;margin:10px 0 4px}
 </main>
 <script>
 const $=id=>document.getElementById(id);
-let AID=null, BUDGET=0, USED=0, PROG=null;
+let AID=null, BUDGET=0, USED=0, PROG=null, SCEN_ID=null;
 const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML};
+const LS_KEY='ticketlab_attempt_id';
 
 function bubble(role,who,text){const m=document.createElement('div');
   m.className='msg '+role;m.innerHTML=`<span class="who">${esc(who)}</span>${esc(text)}`;
@@ -229,29 +245,82 @@ async function loadScenarios(){
   const list=await fetch('/scenarios').then(r=>r.json());
   $('scenSel').innerHTML=list.map(s=>`<option value="${esc(s.id)}">${esc(s.title)} (lvl ${s.difficulty})</option>`).join('');
 }
-loadScenarios();
 
-$('startBtn').onclick=async()=>{
-  $('thread').innerHTML='';$('debrief').style.display='none';
-  const a=await api('/attempts',{scenario_id:$('scenSel').value});
-  if(!a)return;
-  AID=a.attempt_id;BUDGET=a.verify_budget;USED=0;
+function showPicker(){
+  AID=null;PROG=null;SCEN_ID=null;localStorage.removeItem(LS_KEY);
+  $('picker').hidden=false;$('activeCard').hidden=true;$('attemptbar').hidden=true;
+  $('mission').hidden=true;$('gauge').hidden=true;$('composer').hidden=true;
+  $('panel').hidden=true;$('debrief').style.display='none';$('thread').innerHTML='';
+  $('status').textContent='no attempt';
+}
+
+function showActive(ticket,scenarioBrief,verifyBudget){
+  SCEN_ID=scenarioBrief.id;BUDGET=verifyBudget;
+  $('picker').hidden=true;$('activeCard').hidden=false;$('attemptbar').hidden=false;
+  $('activeSubj').textContent=ticket.subject;
+  $('activeMeta').textContent=`from ${ticket.customer_name} · priority ${ticket.priority}`;
   $('status').textContent='attempt '+AID;
-  $('tcard').innerHTML=`<div class="subj">${esc(a.ticket.subject)}</div>
-    <div class="meta">from ${esc(a.ticket.customer_name)} · priority ${esc(a.ticket.priority)}</div>`;
-  $('gauge').hidden=false;setGauge(a.satisfaction);
-  $('composer').hidden=false;$('panel').hidden=false;
-  $('budget').textContent=`verify: ${BUDGET} left`;
-  const sc=a.scenario;
-  PROG={factsTotal:sc.facts_total,found:new Set(),running:false,resolved:false,
-        grade:null,sat:a.satisfaction,satStart:a.satisfaction,escalated:false,left:BUDGET};
   $('mission').hidden=false;
-  $('mmeta').textContent=`${sc.title} · lvl ${sc.difficulty} · ~${sc.estimated_minutes} min`;
-  $('goals').innerHTML=sc.objectives.map(o=>`<div class="goal">${esc(o)}</div>`).join('');
-  renderProgress();
+  $('mmeta').textContent=`${scenarioBrief.title} · lvl ${scenarioBrief.difficulty} · ~${scenarioBrief.estimated_minutes} min`;
+  $('goals').innerHTML=scenarioBrief.objectives.map(o=>`<div class="goal">${esc(o)}</div>`).join('');
+  $('gauge').hidden=false;$('composer').hidden=false;$('panel').hidden=false;
+  $('debrief').style.display='none';
+  $('budget').textContent=`verify: ${verifyBudget} left`;
+}
+
+async function beginAttempt(scenarioId){
+  const a=await api('/attempts',{scenario_id:scenarioId});
+  if(!a)return;
+  AID=a.attempt_id;USED=0;
+  localStorage.setItem(LS_KEY,AID);
+  $('thread').innerHTML='';
+  showActive(a.ticket,a.scenario,a.verify_budget);
+  PROG={factsTotal:a.scenario.facts_total,found:new Set(),running:false,resolved:false,
+        grade:null,sat:a.satisfaction,satStart:a.satisfaction,escalated:false,left:a.verify_budget};
+  setGauge(a.satisfaction);renderProgress();
   bubble('customer',a.ticket.customer_name,a.ticket.body.trim());
   refreshPanel();
+}
+
+async function resumeAttempt(aid){
+  const r=await fetch(`/attempts/${aid}/state`);
+  if(!r.ok){localStorage.removeItem(LS_KEY);return false;}
+  const st=await r.json();
+  AID=st.attempt_id;USED=st.verify_attempts_used;
+  $('thread').innerHTML='';
+  showActive(st.ticket,st.scenario,st.verify_budget-st.verify_attempts_used);
+  PROG={factsTotal:st.scenario.facts_total,found:new Set(st.facts_revealed),
+        running:false,resolved:false,grade:null,sat:st.satisfaction,
+        satStart:st.satisfaction_start,escalated:st.escalated,
+        left:st.verify_budget-st.verify_attempts_used};
+  setGauge(st.satisfaction);renderProgress();
+  bubble('customer',st.ticket.customer_name,st.ticket.body.trim());
+  for(const m of st.thread)bubble(m.role,m.role==='trainee'?'you':'customer',m.text);
+  if(st.escalated)chip('Satisfaction hit zero — the customer escalated. Conversation over.','sys');
+  refreshPanel();
+  return true;
+}
+
+$('startBtn').onclick=()=>beginAttempt($('scenSel').value);
+$('newScenBtn').onclick=async()=>{
+  if(AID)await fetch(`/attempts/${AID}/debrief`);   // finalize so it isn't stuck 'in progress'
+  showPicker();
 };
+$('restartBtn').onclick=async()=>{
+  const sid=SCEN_ID;if(!sid)return;
+  if(AID)await fetch(`/attempts/${AID}/debrief`);
+  beginAttempt(sid);
+};
+$('giveupBtn').onclick=()=>{
+  chip('Attempt ended — see the debrief below.','sys');showDebrief();
+};
+
+(async()=>{
+  await loadScenarios();
+  const saved=localStorage.getItem(LS_KEY);
+  if(saved&&await resumeAttempt(saved))return;
+  showPicker();
+})();
 
 $('sendBtn').onclick=async()=>{
   const t=$('reply').value.trim();if(!t||!AID)return;

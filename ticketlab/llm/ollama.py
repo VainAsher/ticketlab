@@ -24,7 +24,12 @@ from ticketlab.llm.base import TurnContext, LLMTurn
 
 class _TurnSchema(BaseModel):
     reply: str = Field(max_length=1200)
-    satisfaction_delta: int = Field(ge=-25, le=25)
+    # Tone-only band, deliberately narrower than the engine's overall +/-25
+    # clamp: objective progress (server back online, a fact earned) is
+    # rewarded by the engine's own baseline_delta regardless of what this
+    # model says, so this field is just "how did the AGENT'S MANNER make you
+    # feel" — it should not carry the full emotional swing of the ticket.
+    satisfaction_delta: int = Field(ge=-15, le=15)
 
 
 class OllamaLLM:
@@ -75,9 +80,19 @@ class OllamaLLM:
             f"Subject: {ctx.ticket_subject}\n{ctx.ticket_body}\n\n"
             "Rules: stay in character; never volunteer information beyond what "
             "is listed under EARNED FACTS; you only know what a customer could "
-            "observe. Respond ONLY with JSON matching the given schema. "
-            "satisfaction_delta reflects how this support reply made you feel "
-            "(-25 to 25)."
+            "observe. Respond ONLY with JSON matching the given schema.\n\n"
+            "satisfaction_delta (-15 to 15) reflects ONLY your reaction to the "
+            "AGENT'S MANNER this turn — NOT whether your server is actually "
+            "fixed, that is tracked separately and you should not try to "
+            "reward or punish it here. Judge the reply on its own terms:\n"
+            "+5 to +15: the agent asked a good diagnostic question, apologised "
+            "sincerely, explained clearly, or gave a concrete next step.\n"
+            "-5 to -15: the agent was dismissive, used unexplained jargon, "
+            "blamed you, ignored what you just said, or promised something "
+            "fixed it before you have any reason to believe them.\n"
+            "-2 to +2: a neutral, administrative, or unremarkable reply.\n"
+            "A frustrated persona being helped well should still trend "
+            "positive — don't default to negative just to stay in character."
         )
         thread = [
             {"role": "assistant" if m["role"] == "customer" else "user",

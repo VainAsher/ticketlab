@@ -87,6 +87,40 @@ def test_server_online_event_improves_mood_in_scripted_engine():
     assert turn.satisfaction_delta > 0
 
 
+def test_earned_fact_guarantees_positive_floor_even_on_sour_llm_tone():
+    """A trainee who asks the right diagnostic question should see SOME
+    credit even if the LLM's tone judgement that turn is negative — this is
+    the engine-owned baseline, independent of what any LLM decides."""
+    from ticketlab.llm.base import LLMTurn
+
+    class GrumpyLLM:
+        def customer_turn(self, ctx):
+            return LLMTurn(reply="hmph", facts_revealed=[],
+                           satisfaction_delta=-3)   # sour tone, in-range
+
+    s, eng = make_engine(llm=GrumpyLLM())
+    start = eng.state.satisfaction
+    turn = eng.trainee_message("Anything changed recently, new mods installed?",
+                               state_events=[])
+    assert "added-mods" in turn.facts_revealed
+    # baseline +5 for the earned fact outweighs the -3 tone
+    assert turn.satisfaction_delta == 2
+    assert eng.state.satisfaction == start + 2
+
+
+def test_server_online_rewarded_regardless_of_llm_tone():
+    from ticketlab.llm.base import LLMTurn
+
+    class NeutralLLM:
+        def customer_turn(self, ctx):
+            return LLMTurn(reply="ok", facts_revealed=[], satisfaction_delta=0)
+
+    s, eng = make_engine(llm=NeutralLLM())
+    turn = eng.trainee_message("fixed it, check now",
+                               state_events=["The server has come back online."])
+    assert turn.satisfaction_delta == 15   # baseline only, LLM contributed 0
+
+
 def test_ollama_failure_falls_back_to_scripted():
     class ExplodingLLM:
         def customer_turn(self, ctx):

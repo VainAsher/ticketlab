@@ -131,6 +131,16 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
                  "estimated_minutes": s.metadata.estimated_minutes}
                 for s in scenarios.values()]
 
+    def _scenario_brief(s: Scenario) -> dict:
+        return {  # trainee-safe brief — counts and goals, never content
+            "id": s.metadata.id,
+            "title": s.metadata.title,
+            "difficulty": s.metadata.difficulty,
+            "estimated_minutes": s.metadata.estimated_minutes,
+            "objectives": s.metadata.objectives or DEFAULT_OBJECTIVES,
+            "facts_total": len(s.conversation.hidden_facts),
+        }
+
     @app.post("/attempts", status_code=201)
     def create_attempt(req: CreateAttemptReq, request: Request):
         s = scenarios.get(req.scenario_id)
@@ -147,13 +157,7 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
             },
             "satisfaction": a.conversation.state.satisfaction,
             "verify_budget": s.scoring.max_verify_attempts,
-            "scenario": {  # trainee-safe brief — counts and goals, never content
-                "title": s.metadata.title,
-                "difficulty": s.metadata.difficulty,
-                "estimated_minutes": s.metadata.estimated_minutes,
-                "objectives": s.metadata.objectives or DEFAULT_OBJECTIVES,
-                "facts_total": len(s.conversation.hidden_facts),
-            },
+            "scenario": _scenario_brief(s),
         }
 
     def _get(attempt_id: str):
@@ -161,6 +165,30 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
         if a is None:
             raise HTTPException(404, "unknown attempt")
         return a
+
+    @app.get("/attempts/{attempt_id}/state")
+    def attempt_state(attempt_id: str):
+        """Trainee-safe resume snapshot — lets the page reload without losing
+        the attempt. Same allowlist discipline as create_attempt: thread text
+        only, never fault/solution content."""
+        a = _get(attempt_id)
+        s = a.scenario
+        conv = a.conversation.state
+        return {
+            "attempt_id": a.id,
+            "ticket": {"subject": s.ticket.subject, "priority": s.ticket.priority,
+                      "customer_name": s.ticket.customer.name,
+                      "body": s.ticket.body},
+            "scenario": _scenario_brief(s),
+            "satisfaction": conv.satisfaction,
+            "satisfaction_start": s.conversation.satisfaction_start,
+            "escalated": conv.escalated,
+            "verify_budget": s.scoring.max_verify_attempts,
+            "verify_attempts_used": a.verify_attempts_used,
+            "facts_revealed": sorted(conv.revealed),
+            "thread": [{"role": m["role"], "text": m["text"]}
+                      for m in conv.thread[1:]],  # [0] is the opening ticket body
+        }
 
     @app.post("/attempts/{attempt_id}/message")
     def message(attempt_id: str, req: MessageReq):
