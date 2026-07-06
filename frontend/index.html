@@ -93,7 +93,15 @@ button:disabled{opacity:.4;cursor:not-allowed}
 .pill{padding:2px 10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;border:1px solid}
 .pill.running{color:var(--ok);border-color:var(--ok)}
 .pill.offline{color:var(--bad);border-color:var(--bad)}
-.pill.suspended{color:var(--warn);border-color:var(--warn)}
+.pill.suspended{color:var(--bad);border-color:var(--bad)}
+.pill.active{color:var(--ok);border-color:var(--ok)}
+.pill.overdue{color:var(--warn);border-color:var(--warn)}
+.pill.paid{color:var(--ok);border-color:var(--ok)}
+.pill.failed{color:var(--bad);border-color:var(--bad)}
+.pill.pending{color:var(--warn);border-color:var(--warn)}
+.subhead{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--brass-bright);margin:12px 0 4px}
+.invrow{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap}
+.invrow .meta{font-size:11px;color:var(--vellum-dim)}
 .dim{display:flex;justify-content:space-between;gap:10px;margin:6px 0;font-size:12px}
 .dim b{color:var(--brass-bright)}
 .flagline{font-size:11px;color:var(--warn);margin:4px 0}
@@ -152,6 +160,22 @@ button.mini{padding:6px 11px;font-size:11px}
     </div>
   </section>
   <section>
+    <div class="eyebrow">Panel · billing (mock)</div>
+    <div class="panelcard" id="billingPanel" hidden>
+      <div class="row"><span>Account</span><span class="pill" id="acctStatus">active</span></div>
+      <div class="flagline" id="suspReason" style="display:none"></div>
+      <div class="subhead">Invoices</div>
+      <div id="invoiceList" style="font-size:12px;color:var(--vellum-dim)"></div>
+      <div class="subhead">Payment method on file</div>
+      <div class="dim"><span>Card</span><b id="cardInfo">—</b></div>
+      <label>Update card</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <input id="cardLast4" placeholder="last4" maxlength="4" style="width:70px">
+        <input id="cardMonth" type="number" placeholder="MM" min="1" max="12" style="width:64px">
+        <input id="cardYear" type="number" placeholder="YYYY" min="2024" max="2100" style="width:84px">
+        <button class="quiet" id="updateCardBtn">Update card</button>
+      </div>
+    </div>
     <div class="eyebrow">Panel · training server (mock)</div>
     <div class="panelcard" id="panel" hidden>
       <div class="row"><span>priya-modded</span><span class="pill offline" id="power">offline</span></div>
@@ -164,7 +188,6 @@ button.mini{padding:6px 11px;font-size:11px}
         <button class="quiet" id="applyBtn">Apply changes</button>
         <button class="quiet" id="powerStart">Start</button>
         <button class="quiet" id="powerRestart">Restart</button>
-        <button class="quiet" id="unsuspendBtn">Unsuspend</button>
         <button class="danger" id="reinstallBtn">Reinstall server</button>
       </div>
       <div class="btnrow">
@@ -241,6 +264,35 @@ async function refreshPanel(){
   }
 }
 
+async function refreshBilling(){
+  const b=await fetch(`/attempts/${AID}/demo/billing_panel`).then(r=>r.json());
+  $('acctStatus').textContent=b.account_status;
+  $('acctStatus').className='pill '+b.account_status;
+  if(b.suspension_reason){$('suspReason').style.display='block';$('suspReason').textContent='⚑ '+b.suspension_reason;}
+  else{$('suspReason').style.display='none';}
+  $('invoiceList').innerHTML=b.invoices.length?b.invoices.map(inv=>`
+    <div class="invrow">
+      <span>${esc(inv.id)} — $${(inv.amount/100).toFixed(2)} <span class="pill ${esc(inv.status)}">${esc(inv.status)}</span></span>
+      <span class="meta">${esc(inv.due_date||'')} ${esc(inv.note||'')}</span>
+      ${inv.status!=='paid'?`<button class="quiet mini" data-retry="${esc(inv.id)}">Retry payment</button>`:''}
+    </div>`).join('') : '<span style="font-size:12px;color:#8f8a79">no invoices on file</span>';
+  $('cardInfo').textContent=b.payment_method.last4
+    ?`•••• ${esc(b.payment_method.last4)} exp ${b.payment_method.exp_month}/${b.payment_method.exp_year} — ${esc(b.payment_method.status)}`
+    :'no card on file';
+  $('invoiceList').querySelectorAll('[data-retry]').forEach(btn=>btn.onclick=async()=>{
+    await api(`/attempts/${AID}/demo/billing/retry_payment`,{invoice_id:btn.dataset.retry});
+    refreshBilling();refreshPanel();
+  });
+}
+$('updateCardBtn').onclick=async()=>{
+  const last4=$('cardLast4').value.trim(),month=parseInt($('cardMonth').value||'0',10),
+    year=parseInt($('cardYear').value||'0',10);
+  if(!/^\d{4}$/.test(last4)||!month||!year)return;
+  await api(`/attempts/${AID}/demo/billing/update_card`,{last4,exp_month:month,exp_year:year});
+  $('cardLast4').value='';$('cardMonth').value='';$('cardYear').value='';
+  refreshBilling();refreshPanel();
+};
+
 async function loadScenarios(){
   const list=await fetch('/scenarios').then(r=>r.json());
   $('scenSel').innerHTML=list.map(s=>`<option value="${esc(s.id)}">${esc(s.title)} (lvl ${s.difficulty})</option>`).join('');
@@ -250,7 +302,8 @@ function showPicker(){
   AID=null;PROG=null;SCEN_ID=null;localStorage.removeItem(LS_KEY);
   $('picker').hidden=false;$('activeCard').hidden=true;$('attemptbar').hidden=true;
   $('mission').hidden=true;$('gauge').hidden=true;$('composer').hidden=true;
-  $('panel').hidden=true;$('debrief').style.display='none';$('thread').innerHTML='';
+  $('panel').hidden=true;$('billingPanel').hidden=true;
+  $('debrief').style.display='none';$('thread').innerHTML='';
   $('status').textContent='no attempt';
 }
 
@@ -264,6 +317,7 @@ function showActive(ticket,scenarioBrief,verifyBudget){
   $('mmeta').textContent=`${scenarioBrief.title} · lvl ${scenarioBrief.difficulty} · ~${scenarioBrief.estimated_minutes} min`;
   $('goals').innerHTML=scenarioBrief.objectives.map(o=>`<div class="goal">${esc(o)}</div>`).join('');
   $('gauge').hidden=false;$('composer').hidden=false;$('panel').hidden=false;
+  $('billingPanel').hidden=false;
   $('debrief').style.display='none';
   $('budget').textContent=`verify: ${verifyBudget} left`;
 }
@@ -279,7 +333,7 @@ async function beginAttempt(scenarioId){
         grade:null,sat:a.satisfaction,satStart:a.satisfaction,escalated:false,left:a.verify_budget};
   setGauge(a.satisfaction);renderProgress();
   bubble('customer',a.ticket.customer_name,a.ticket.body.trim());
-  refreshPanel();
+  refreshPanel();refreshBilling();
 }
 
 async function resumeAttempt(aid){
@@ -297,7 +351,7 @@ async function resumeAttempt(aid){
   bubble('customer',st.ticket.customer_name,st.ticket.body.trim());
   for(const m of st.thread)bubble(m.role,m.role==='trainee'?'you':'customer',m.text);
   if(st.escalated)chip('Satisfaction hit zero — the customer escalated. Conversation over.','sys');
-  refreshPanel();
+  refreshPanel();refreshBilling();
   return true;
 }
 
@@ -340,7 +394,6 @@ $('applyBtn').onclick=async()=>{
   }
   refreshPanel();
 };
-$('unsuspendBtn').onclick=async()=>{await api(`/attempts/${AID}/demo/mutate`,{action:'unsuspend'});refreshPanel();};
 $('powerStart').onclick=async()=>{await api(`/attempts/${AID}/demo/mutate`,{action:'start'});refreshPanel();};
 $('powerRestart').onclick=async()=>{await api(`/attempts/${AID}/demo/mutate`,{action:'restart'});refreshPanel();};
 $('reinstallBtn').onclick=async()=>{await api(`/attempts/${AID}/demo/mutate`,{action:'reinstall'});refreshPanel();};

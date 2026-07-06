@@ -61,6 +61,16 @@ class ScenarioDraft(BaseModel):
     scenario: dict
 
 
+class UpdateCardReq(BaseModel):
+    last4: str = Field(min_length=4, max_length=4, pattern=r"^\d{4}$")
+    exp_month: int = Field(ge=1, le=12)
+    exp_year: int = Field(ge=2000, le=2100)
+
+
+class RetryPaymentReq(BaseModel):
+    invoice_id: str = Field(min_length=1, max_length=100)
+
+
 def _identity(request: Request) -> str:
     """Trainee identity from the Authentik forward-auth headers Traefik
     injects. Absent (local dev, tests) -> 'anonymous'. Never trusted for
@@ -83,8 +93,12 @@ FAULT_VERB_SPEC = {
     "start_server": {"fields": [], "hint": "Power on (crash rules apply — an impossible start ends offline)."},
     "stop_server": {"fields": [], "hint": "Power off cleanly."},
     "kill_server": {"fields": [], "hint": "Hard kill."},
-    "suspend_server": {"fields": [], "hint": "Suspend (billing-style). Trainee must Unsuspend before Start works."},
+    "suspend_server": {"fields": [], "hint": "Legacy game-panel-only suspend. Prefer the billing verbs below (set_payment_method / create_invoice / fail_payment / suspend_account) so suspension is fixed through the Billing panel, not a bare Unsuspend button."},
     "wait": {"fields": ["seconds"], "hint": "Let simulated time pass between steps."},
+    "set_payment_method": {"fields": ["last4", "exp_month", "exp_year", "card_status"], "hint": "Set the customer's card on file. card_status: valid/expired. Only fields you set are changed."},
+    "create_invoice": {"fields": ["invoice_id", "amount", "status", "due_date", "note"], "hint": "Add a billing invoice. Give it a stable id — your win-condition assertions will reference it."},
+    "fail_payment": {"fields": ["invoice_id"], "hint": "Marks that invoice failed and moves the account to 'overdue' (not suspended yet — good for a grace-period scenario)."},
+    "suspend_account": {"fields": ["note"], "hint": "Moves the account to 'suspended' — the game panel's Start is denied until account_status is active again, no matter what's changed there. 'note' becomes the suspension reason shown in the Billing panel."},
 }
 ASSERTION_SPEC = {
     "server_state": {"fields": ["operator", "expected", "stable_for_seconds"], "hint": "Power state check. Use stable_for_seconds to demand it HOLDS (uptime-anchored) — 60s is the house norm."},
@@ -96,6 +110,9 @@ ASSERTION_SPEC = {
     "activity_occurred": {"fields": ["event"], "hint": "Something must have happened, ever (reads the activity log — good for 'they unsuspended it': server:suspension.update)."},
     "activity_absent": {"fields": ["event"], "hint": "Something must NEVER have happened (good for anti-patterns)."},
     "allocation_check": {"fields": [], "hint": "Not modelled in the mock adapter — always passes. Avoid."},
+    "invoice_status": {"fields": ["field", "operator", "expected"], "hint": "'field' is the invoice_id from your fault script; 'expected' is pending/paid/failed."},
+    "payment_method_valid": {"fields": ["operator", "expected"], "hint": "Checks the card status on file. expected: valid/expired."},
+    "account_status": {"fields": ["operator", "expected"], "hint": "expected: active/overdue/suspended."},
 }
 
 
@@ -368,6 +385,34 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
                     "startup_command": snap.startup_command,
                     "limits": snap.limits, "variables": snap.variables,
                     "activity": list(snap.activity)[-10:]}
+
+        # ── billing panel demo ── separate from the game panel above:
+        # updating a card or retrying a payment never touches server config,
+        # and a suspended account blocks Start regardless of what the game
+        # panel shows (see MockAdapter.billing_gate).
+        @app.get("/attempts/{attempt_id}/demo/billing_panel")
+        def demo_billing_panel(attempt_id: str):
+            bsnap = _get(attempt_id).billing.snapshot()
+            return {"account_status": bsnap.account_status,
+                    "suspension_reason": bsnap.suspension_reason,
+                    "payment_method": bsnap.payment_method,
+                    "invoices": list(bsnap.invoices)}
+
+        @app.post("/attempts/{attempt_id}/demo/billing/update_card")
+        def demo_update_card(attempt_id: str, req: UpdateCardReq):
+            a = _get(attempt_id)
+            a.billing.update_payment_method(req.last4, req.exp_month, req.exp_year)
+            bsnap = a.billing.snapshot()
+            return {"account_status": bsnap.account_status,
+                    "payment_method": bsnap.payment_method}
+
+        @app.post("/attempts/{attempt_id}/demo/billing/retry_payment")
+        def demo_retry_payment(attempt_id: str, req: RetryPaymentReq):
+            a = _get(attempt_id)
+            ok = a.billing.retry_payment(req.invoice_id)
+            bsnap = a.billing.snapshot()
+            return {"success": ok, "account_status": bsnap.account_status,
+                    "invoices": list(bsnap.invoices)}
 
     frontend = Path(__file__).parent.parent / "frontend" / "index.html"
     if frontend.exists():

@@ -29,6 +29,13 @@ class MockAdapter:
         self.limits: dict[str, int] = {}
         self.files: dict[str, str] = {}
         self.activity: list[str] = []
+        # Set by the orchestrator to the billing adapter's "account active"
+        # check. Suspension for non-payment is a BILLING fact now — this is
+        # the one seam where the game panel has to respect it: a suspended
+        # account can't be started here no matter what the trainee changes
+        # in this panel, matching how a real Pterodactyl instance behaves
+        # when WHMCS has the server flagged.
+        self.billing_gate = None
 
     # ── lifecycle ──
     def provision(self, server_spec, physics=None) -> None:
@@ -94,6 +101,15 @@ class MockAdapter:
         if self.power_state == "suspended":
             self._log("server:power.denied-suspended")
             return "suspended"
+        if self.billing_gate and not self.billing_gate():
+            # Deliberately does NOT persist power_state='suspended' — billing
+            # can flip back to active without any game-panel action, and a
+            # persisted value here would stick even after that (nothing on
+            # this side would ever clear it). snapshot() overlays the
+            # 'suspended' DISPLAY live from billing_gate instead; the real
+            # stored state just stays offline, an ordinary failed start.
+            self._log("server:power.denied-suspended")
+            return "offline"
         # built-in: heap larger than container limit -> OOM kill
         m = re.search(r"-Xmx(\d+)M", self.startup_command)
         limit = self.limits.get("memory", 0)
@@ -126,8 +142,11 @@ class MockAdapter:
 
     # ── read ──
     def snapshot(self) -> PanelSnapshot:
+        displayed = self.power_state
+        if self.billing_gate and not self.billing_gate() and displayed != "suspended":
+            displayed = "suspended"   # live overlay — see _physics for why
         return PanelSnapshot(
-            power_state=self.power_state,
+            power_state=displayed,
             startup_command=self.startup_command,
             variables=dict(self.variables),
             limits=dict(self.limits),

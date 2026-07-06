@@ -145,6 +145,58 @@ def test_attempt_state_404_for_unknown_attempt(client):
     assert client.get("/attempts/does-not-exist/state").status_code == 404
 
 
+def test_billing_panel_defaults_to_account_fine_for_non_billing_scenario(client):
+    aid = start(client)   # oom-crash-loop-modded — never touches billing
+    p = client.get(f"/attempts/{aid}/demo/billing_panel").json()
+    assert p["account_status"] == "active"
+    assert p["invoices"] == []
+
+
+def test_billing_full_arc_update_card_then_retry_then_start(client):
+    aid = client.post("/attempts",
+                      json={"scenario_id": "suspended-not-broken"}).json()["attempt_id"]
+    panel = client.get(f"/attempts/{aid}/demo/billing_panel").json()
+    assert panel["account_status"] == "suspended"
+    assert panel["payment_method"]["status"] == "expired"
+    inv_id = panel["invoices"][0]["id"]
+
+    # Start is denied purely by billing, regardless of the game panel.
+    r = client.post(f"/attempts/{aid}/demo/mutate", json={"action": "start"}).json()
+    assert r["power_state"] == "suspended"
+
+    client.post(f"/attempts/{aid}/demo/billing/update_card",
+               json={"last4": "4242", "exp_month": 6, "exp_year": 2030})
+    retry = client.post(f"/attempts/{aid}/demo/billing/retry_payment",
+                        json={"invoice_id": inv_id}).json()
+    assert retry["success"] is True
+    assert retry["account_status"] == "active"
+
+    r = client.post(f"/attempts/{aid}/demo/mutate", json={"action": "start"}).json()
+    assert r["power_state"] == "running"
+
+    client.post(f"/attempts/{aid}/demo/advance_clock", json={"seconds": 181})
+    v = client.post(f"/attempts/{aid}/verify").json()
+    assert v["complete"] and v["grade"] == "full" and v["score"] == 100
+
+
+def test_retry_payment_fails_without_valid_card(client):
+    aid = client.post("/attempts",
+                      json={"scenario_id": "suspended-not-broken"}).json()["attempt_id"]
+    inv_id = client.get(f"/attempts/{aid}/demo/billing_panel").json()["invoices"][0]["id"]
+    retry = client.post(f"/attempts/{aid}/demo/billing/retry_payment",
+                        json={"invoice_id": inv_id}).json()
+    assert retry["success"] is False
+    assert retry["account_status"] == "suspended"
+
+
+def test_billing_response_never_leaks_solution_or_fault(client):
+    aid = client.post("/attempts",
+                      json={"scenario_id": "suspended-not-broken"}).json()["attempt_id"]
+    dumped = str(client.get(f"/attempts/{aid}/demo/billing_panel").json())
+    assert "fixed-billing-and-running" not in dumped   # solution id
+    assert "her card expired" not in dumped.lower()    # hidden fact text
+
+
 def test_message_length_capped(client):
     aid = start(client)
     r = client.post(f"/attempts/{aid}/message", json={"text": "x" * 100_000})

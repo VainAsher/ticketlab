@@ -15,11 +15,16 @@ FAULT_VERBS = {
     "set_variable", "set_startup_command", "set_limits", "write_file",
     "delete_file", "reassign_allocation", "start_server", "stop_server",
     "kill_server", "suspend_server", "wait",
+    # billing panel (ticketlab/adapters/billing.py) — 3 scenarios consume
+    # these: suspended-not-broken, billing-overdue-grace-period,
+    # billing-payment-fixed-needs-retry
+    "set_payment_method", "create_invoice", "fail_payment", "suspend_account",
 }
 ASSERTION_TYPES = {
     "server_state", "startup_command", "variable_equals", "limits_check",
     "file_contains", "file_absent", "allocation_check", "activity_occurred",
     "activity_absent",
+    "invoice_status", "payment_method_valid", "account_status",
 }
 OPERATORS = {"equals", "not_equals", "contains", "not_contains", "matches", "gte", "lte"}
 GRADE_RANK = {"temp": 1, "partial": 2, "full": 3}
@@ -113,6 +118,16 @@ class FaultStep(BaseModel):
     cpu: Optional[int] = None
     path: Optional[str] = None
     content: Optional[str] = None
+    # billing verbs
+    last4: Optional[str] = None
+    exp_month: Optional[int] = None
+    exp_year: Optional[int] = None
+    card_status: Optional[str] = None
+    invoice_id: Optional[str] = None
+    amount: Optional[int] = None
+    status: Optional[str] = None
+    due_date: Optional[str] = None
+    note: Optional[str] = None
 
     @field_validator("action")
     @classmethod

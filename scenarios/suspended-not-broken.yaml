@@ -2,12 +2,16 @@ schema_version: 2
 metadata:
   id: suspended-not-broken
   title: "'Broken' server is actually suspended — billing mixup"
-  version: 1.0.0
+  version: 2.0.0
   author: vain
-  provenance: {created: 2026-07-05, source: generic, licence: proprietary}
+  provenance: {created: 2026-07-06, source: generic, licence: proprietary}
   difficulty: 1
   tags: [billing, suspension, tier1, soft-skills]
   estimated_minutes: 8
+  objectives:
+    - "Work out why the panel won't even let her press Start"
+    - "Resolve it through the Billing panel, not a shortcut on the server config"
+    - "Keep Lena calm — she has a community event tonight"
 panel: {adapter: mock, min_version: "1.11"}
 ticket:
   subject: "Cant connect, everything is broken"
@@ -28,7 +32,21 @@ environment:
     variables: {MINECRAFT_VERSION: "1.21.4", SERVER_JARFILE: "server.jar"}
 fault:
   steps:
-    - action: suspend_server
+    - action: set_payment_method
+      last4: "4242"
+      exp_month: 3
+      exp_year: 2026
+      card_status: expired
+    - action: create_invoice
+      invoice_id: inv-lena-042
+      amount: 1200
+      status: pending
+      due_date: "2026-07-01"
+      note: "Monthly hosting — community plan"
+    - action: fail_payment
+      invoice_id: inv-lena-042
+    - action: suspend_account
+      note: "Card on file expired; renewal payment failed."
 conversation:
   persona: frustrated-novice
   satisfaction_start: 30
@@ -43,18 +61,22 @@ conversation:
 verification:
   poll_interval_seconds: 10
   solutions:
-    - id: unsuspend-and-run
+    - id: fixed-billing-and-running
       grade: full
       score: 100
-      label: "Identified the suspension, lifted it, server back online"
+      label: "Updated the expired card, retried payment, server back online"
       assertions:
-        - {id: unsuspended, type: activity_occurred, event: "server:suspension.update"}
+        - {id: card-valid, type: payment_method_valid, operator: equals, expected: valid}
+        - {id: invoice-paid, type: invoice_status, field: inv-lena-042, operator: equals, expected: paid}
+        - {id: acct-active, type: account_status, operator: equals, expected: active}
         - {id: stays-up, type: server_state, operator: equals, expected: running, stable_for_seconds: 60}
       feedback: >
         Nothing was technically broken — the account was suspended for failed
         payment. The diagnostic tell: "won't even let me press start" is
-        suspension behaviour, not a crash. The real work is the conversation:
-        billing news, delivered kindly, before her event.
+        suspension behaviour, not a crash. Fixing it means the Billing panel:
+        get the new card details, update the card, retry the payment — the
+        game panel's Start stays denied until the account is active again no
+        matter what you change there.
   anti_patterns:
     - id: reinstalled
       penalty: 30

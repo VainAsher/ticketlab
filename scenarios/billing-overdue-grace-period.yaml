@@ -1,0 +1,84 @@
+schema_version: 2
+metadata:
+  id: billing-overdue-grace-period
+  title: "Payment declined, server still up — anxious customer, grace period"
+  version: 1.0.0
+  author: vain
+  provenance: {created: 2026-07-06, source: generic, licence: proprietary}
+  difficulty: 1
+  tags: [billing, soft-skills, tier1]
+  estimated_minutes: 8
+  objectives:
+    - "Find out what's actually wrong — nothing is down yet"
+    - "Don't assume the card is bad before checking"
+    - "Reassure the customer and resolve it before it becomes a real outage"
+panel: {adapter: mock, min_version: "1.11"}
+ticket:
+  subject: "Scary payment email, is my server about to be shut off??"
+  priority: medium
+  customer:
+    name: "Nova"
+    persona: anxious-planner
+    context: "A one-off bank decline flagged the charge as suspicious; card itself is fine."
+  body: |
+    I got an email saying a payment failed and it might suspend my service.
+    Nothing's actually down right now but I'm really worried it's about to
+    be. I have a big stream planned for tonight, please tell me this isn't
+    going to ruin it.
+environment:
+  server:
+    name: "nova-solo"
+    egg: minecraft-paper
+    limits: {memory: 2048, disk: 5120, cpu: 100}
+    variables: {MINECRAFT_VERSION: "1.21.4", SERVER_JARFILE: "server.jar"}
+fault:
+  steps:
+    - action: set_payment_method
+      last4: "1881"
+      exp_month: 11
+      exp_year: 2027
+      card_status: valid
+    - action: create_invoice
+      invoice_id: inv-nova-118
+      amount: 900
+      status: pending
+      due_date: "2026-07-04"
+      note: "Monthly hosting — solo plan"
+    - action: fail_payment
+      invoice_id: inv-nova-118
+conversation:
+  persona: anxious-planner
+  satisfaction_start: 45
+  never_volunteers: true
+  hidden_facts:
+    - id: bank-flagged-not-card
+      fact: "The bank flagged the charge as suspicious and declined it once — nothing wrong with the card itself"
+      reveal_keywords: [bank, declin, flag, charg, why, card, reason]
+    - id: worried-about-tonight
+      fact: "Terrified the service will vanish mid-stream if this isn't sorted before tonight"
+      reveal_keywords: [worr, tonight, stream, event, plan, deadline]
+verification:
+  poll_interval_seconds: 10
+  solutions:
+    - id: retried-and-paid
+      grade: full
+      score: 100
+      label: "Retried the payment — the card was fine, the bank had just declined it once"
+      assertions:
+        - {id: invoice-paid, type: invoice_status, field: inv-nova-118, operator: equals, expected: paid}
+        - {id: acct-active, type: account_status, operator: equals, expected: active}
+      feedback: >
+        The card status was already 'valid' — this was a one-off bank
+        decline, not an expired card. Asking for new card details here
+        would have been wrong and wasted the customer's time; the fix was
+        just retrying the charge from the Billing panel.
+  anti_patterns:
+    - id: reinstalled
+      penalty: 30
+      assertions:
+        - {type: activity_occurred, event: "server:settings.reinstall"}
+      feedback: >
+        The server was never touched by this fault — reinstalling here
+        destroys data for no reason and does nothing about the invoice.
+scoring: {max_verify_attempts: 5, target_minutes: 8}
+teardown: {policy: on_pass_or_expiry, expiry_minutes: 60}

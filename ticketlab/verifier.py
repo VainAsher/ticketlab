@@ -44,8 +44,17 @@ def _compare(actual, operator: str, expected) -> bool:
     raise ValueError(f"unknown operator {operator}")
 
 
-def _assertion_holds_now(a: Assertion, snap: PanelSnapshot) -> bool:
+def _assertion_holds_now(a: Assertion, snap: PanelSnapshot, bsnap=None) -> bool:
     """Point-in-time evaluation, ignoring stability windows."""
+    if a.type == "invoice_status":
+        inv = next((i for i in (bsnap.invoices if bsnap else ())
+                   if i["id"] == a.field), None)
+        return inv is not None and _compare(inv["status"], a.operator or "equals", a.expected)
+    if a.type == "payment_method_valid":
+        status = bsnap.payment_method["status"] if bsnap else ""
+        return _compare(status, a.operator or "equals", a.expected or "valid")
+    if a.type == "account_status":
+        return _compare(bsnap.account_status if bsnap else "", a.operator or "equals", a.expected)
     if a.type == "server_state":
         return _compare(snap.power_state, a.operator or "equals", a.expected)
     if a.type == "startup_command":
@@ -69,9 +78,10 @@ def _assertion_holds_now(a: Assertion, snap: PanelSnapshot) -> bool:
 
 
 class Verifier:
-    def __init__(self, verification: Verification, adapter, clock):
+    def __init__(self, verification: Verification, adapter, clock, billing=None):
         self.cfg = verification
         self.adapter = adapter
+        self.billing = billing
         self.clock = clock
         # assertion key -> timestamp when it FIRST held continuously
         self._held_since: dict[str, float] = {}
@@ -79,8 +89,8 @@ class Verifier:
     def _akey(self, sol_id: str, a: Assertion, idx: int) -> str:
         return f"{sol_id}/{a.id or idx}"
 
-    def _assertion_satisfied(self, key: str, a: Assertion, snap: PanelSnapshot) -> bool:
-        holds = _assertion_holds_now(a, snap)
+    def _assertion_satisfied(self, key: str, a: Assertion, snap: PanelSnapshot, bsnap) -> bool:
+        holds = _assertion_holds_now(a, snap, bsnap)
         now = self.clock.now()
         if not holds:
             self._held_since.pop(key, None)   # window resets on any lapse
@@ -98,6 +108,7 @@ class Verifier:
 
     def check(self) -> VerifyResult:
         snap = self.adapter.snapshot()
+        bsnap = self.billing.snapshot() if self.billing else None
         detail: dict[str, bool] = {}
 
         matched = None
@@ -105,7 +116,7 @@ class Verifier:
             ok = True
             for i, a in enumerate(sol.assertions):
                 key = self._akey(sol.id, a, i)
-                sat = self._assertion_satisfied(key, a, snap)
+                sat = self._assertion_satisfied(key, a, snap, bsnap)
                 detail[key] = sat
                 ok = ok and sat
             if ok and (matched is None or GRADE_RANK[sol.grade] > GRADE_RANK[matched.grade]):
@@ -113,7 +124,7 @@ class Verifier:
 
         hits, hit_feedback, penalty = [], [], 0
         for ap in self.cfg.anti_patterns:
-            if all(_assertion_holds_now(a, snap) for a in ap.assertions):
+            if all(_assertion_holds_now(a, snap, bsnap) for a in ap.assertions):
                 hits.append(ap.id)
                 hit_feedback.append(ap.feedback)
                 penalty += ap.penalty

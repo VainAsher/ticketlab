@@ -18,6 +18,11 @@ _PERSONA_OPENERS = {
         "pleased": "Oh thank goodness. ",
         "annoyed": "This is exactly why I'm so fed up. ",
     },
+    "anxious-planner": {
+        "neutral": "Sorry to keep asking, I just want to be sure — ",
+        "pleased": "Oh, that's such a relief to hear. ",
+        "annoyed": "I already said I'm worried about the timing on this. ",
+    },
 }
 
 

@@ -1,0 +1,94 @@
+schema_version: 2
+metadata:
+  id: billing-payment-fixed-needs-retry
+  title: "Card already updated, still suspended — the retry never ran"
+  version: 1.0.0
+  author: vain
+  provenance: {created: 2026-07-06, source: generic, licence: proprietary}
+  difficulty: 2
+  tags: [billing, tier1]
+  estimated_minutes: 10
+  objectives:
+    - "Confirm what the customer already tried before assuming the card is still bad"
+    - "Don't ask them to redo something they've already done"
+    - "Get the server back to a stable running state"
+panel: {adapter: mock, min_version: "1.11"}
+ticket:
+  subject: "Updated my card days ago, still can't start my server??"
+  priority: high
+  customer:
+    name: "Ruby"
+    persona: technical-but-wrong
+    context: "Self-service updated the card after the decline email, but the failed invoice was never manually retried — auto-retry only runs nightly and hasn't caught up."
+  body: |
+    My server suddenly stopped and I can't start it. I already updated my
+    card on your billing page after I got the email about it, but it's
+    STILL not working days later. What am I missing??
+environment:
+  server:
+    name: "ruby-duo"
+    egg: minecraft-paper
+    limits: {memory: 3072, disk: 8192, cpu: 150}
+    variables: {MINECRAFT_VERSION: "1.21.4", SERVER_JARFILE: "server.jar"}
+fault:
+  steps:
+    - action: set_payment_method
+      last4: "7734"
+      exp_month: 9
+      exp_year: 2028
+      card_status: valid
+    - action: create_invoice
+      invoice_id: inv-ruby-207
+      amount: 1500
+      status: pending
+      due_date: "2026-06-29"
+      note: "Monthly hosting — duo plan"
+    - action: fail_payment
+      invoice_id: inv-ruby-207
+    - action: suspend_account
+      note: "Card expired at time of billing; customer has since updated it via self-service, but the failed invoice was never retried."
+conversation:
+  persona: technical-but-wrong
+  satisfaction_start: 40
+  never_volunteers: true
+  hidden_facts:
+    - id: already-updated-card
+      fact: "Updated their card through the billing portal three days ago"
+      reveal_keywords: [card, updat, chang, portal, alread, fix, when]
+    - id: confused-why-still-down
+      fact: "Doesn't understand why it's still not working since fixing the card themselves"
+      reveal_keywords: [why, still, confus, understand, doesn]
+verification:
+  poll_interval_seconds: 10
+  solutions:
+    - id: retried-after-confirming-card
+      grade: full
+      score: 100
+      label: "Confirmed the card was already valid, retried the failed payment, server back online"
+      assertions:
+        - {id: invoice-paid, type: invoice_status, field: inv-ruby-207, operator: equals, expected: paid}
+        - {id: acct-active, type: account_status, operator: equals, expected: active}
+        - {id: stays-up, type: server_state, operator: equals, expected: running, stable_for_seconds: 60}
+      feedback: >
+        The card was already valid — the customer had fixed it themselves.
+        The only missing step was a manual retry of the failed invoice;
+        auto-retry runs nightly and hadn't caught up yet. Asking them to
+        update the card again would have been redundant and a little
+        insulting given they'd already done the work.
+  anti_patterns:
+    - id: unnecessary-card-update
+      penalty: 15
+      assertions:
+        - {type: activity_occurred, event: "billing:card.updated_by_agent"}
+      feedback: >
+        The customer already updated their card themselves — overwriting
+        valid details or asking them to redo it wastes their time for
+        nothing; the invoice just needed a manual retry.
+    - id: reinstalled
+      penalty: 30
+      assertions:
+        - {type: activity_occurred, event: "server:settings.reinstall"}
+      feedback: >
+        Reinstalling wipes the server and does nothing for an unpaid invoice.
+scoring: {max_verify_attempts: 5, target_minutes: 10}
+teardown: {policy: on_pass_or_expiry, expiry_minutes: 60}

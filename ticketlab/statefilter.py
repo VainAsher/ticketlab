@@ -38,3 +38,28 @@ def customer_observable_events(before: PanelSnapshot, after: PanelSnapshot) -> l
     # Deliberately NOT surfaced: startup command, variables, limits, file
     # edits. A customer cannot see those; the agent must not know them.
     return events
+
+
+def billing_observable_events(before, after) -> list[str]:
+    """Billing equivalent of customer_observable_events: a customer can see
+    their own account status and a payment going through — never the raw
+    invoice/card fields, which is why this returns phrases, not data."""
+    events: list[str] = []
+    if before.account_status != after.account_status:
+        if after.account_status == "suspended":
+            events.append("The customer's account just became suspended.")
+        elif after.account_status == "active" and before.account_status != "active":
+            events.append("The customer's account is active again — any "
+                          "suspension has been lifted.")
+        elif after.account_status == "overdue":
+            events.append("The customer's account is now marked overdue.")
+
+    new_activity = after.activity[len(before.activity):]
+    for ev in new_activity:
+        if ev.startswith("billing:retry.success"):
+            events.append("A payment the customer can see just went through "
+                          "successfully.")
+        elif ev.startswith("billing:retry.failed"):
+            events.append("A payment attempt on the customer's account just "
+                          "failed again.")
+    return events

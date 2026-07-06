@@ -15,9 +15,10 @@ from dataclasses import dataclass, field
 
 from ticketlab.schema import Scenario
 from ticketlab.adapters.mock import MockAdapter, FakeClock
+from ticketlab.adapters.billing import BillingAdapter
 from ticketlab.verifier import Verifier, VerifyResult
 from ticketlab.conversation import ConversationEngine, TurnResult
-from ticketlab.statefilter import customer_observable_events
+from ticketlab.statefilter import customer_observable_events, billing_observable_events
 
 
 @dataclass
@@ -25,6 +26,7 @@ class Attempt:
     id: str
     scenario: Scenario
     adapter: MockAdapter
+    billing: BillingAdapter
     clock: FakeClock
     verifier: Verifier
     conversation: ConversationEngine
@@ -32,6 +34,7 @@ class Attempt:
     last_verify: VerifyResult | None = None
     best_verify: VerifyResult | None = None
     _last_seen_snapshot: object = None
+    _last_seen_billing_snapshot: object = None
     pending_events: list[str] = field(default_factory=list)
 
 
@@ -54,18 +57,26 @@ class Orchestrator:
             self._attempts.pop(next(iter(self._attempts)))
         clock = FakeClock()
         adapter = MockAdapter(clock=clock)
+        billing = BillingAdapter()
         adapter.provision(scenario.environment.server,
                           physics=scenario.environment.mock_physics)
+        # One ordered fault script, two adapters: each only reacts to the
+        # verbs it owns, so a scenario can freely interleave game and
+        # billing steps (or use only one side).
         adapter.apply_fault(scenario.fault.steps)
+        billing.apply_fault(scenario.fault.steps)
+        adapter.billing_gate = lambda: billing.account_status == "active"
         attempt = Attempt(
             id=uuid.uuid4().hex[:12],
             scenario=scenario,
             adapter=adapter,
+            billing=billing,
             clock=clock,
-            verifier=Verifier(scenario.verification, adapter, clock),
+            verifier=Verifier(scenario.verification, adapter, clock, billing=billing),
             conversation=ConversationEngine(scenario, llm=self._llm),
         )
         attempt._last_seen_snapshot = adapter.snapshot()
+        attempt._last_seen_billing_snapshot = billing.snapshot()
         self._attempts[attempt.id] = attempt
         if self._store:
             self._store.start_attempt(attempt.id, scenario.metadata.id,
@@ -79,9 +90,13 @@ class Orchestrator:
     def trainee_message(self, attempt: Attempt, text: str) -> TurnResult:
         current = attempt.adapter.snapshot()
         new_events = customer_observable_events(attempt._last_seen_snapshot, current)
+        current_billing = attempt.billing.snapshot()
+        new_events += billing_observable_events(
+            attempt._last_seen_billing_snapshot, current_billing)
         attempt.pending_events.extend(new_events)
         events, attempt.pending_events = attempt.pending_events, []
         attempt._last_seen_snapshot = current
+        attempt._last_seen_billing_snapshot = current_billing
         turn = attempt.conversation.trainee_message(text, state_events=events)
         if self._store:
             self._store.log_event(attempt.id, "message", {
