@@ -197,7 +197,7 @@ async function loadRows(){
       :(r.finished_at?'<span class="grade-none">unresolved</span>':'<span style="color:#8f8a79">in progress</span>');
     const rev=r.grades_status?`<span class="chip ${r.grades_status}">${r.grades_status}</span>`:'—';
     return `<tr class="row" data-id="${esc(r.id)}"><td>${esc(when)}</td><td>${esc(r.trainee)}</td>
-      <td>${esc(r.scenario_id)}</td><td>${res}</td>
+      <td>${esc(r.scenario_title||r.scenario_id)}</td><td>${res}</td>
       <td>${r.satisfaction_final??'—'}${r.escalated?' ⚑':''}</td>
       <td>${r.facts_uncovered??'—'}/${r.facts_total??'—'}</td>
       <td>${r.verify_attempts??'—'}</td><td>${rev}</td></tr>`;
@@ -235,7 +235,7 @@ async function openDetail(id){
   }
   $('dbody').innerHTML=`<div class="eyebrow">attempt ${esc(r.id)}</div>
     <div style="font-size:12px;color:var(--vellum-dim);line-height:1.7">
-      ${esc(r.trainee)} · ${esc(r.scenario_id)} · ${new Date(r.started_at*1000).toLocaleString()}<br>
+      ${esc(r.trainee)} · ${esc(r.scenario_title||r.scenario_id)} · ${new Date(r.started_at*1000).toLocaleString()}<br>
       result: <b class="grade-${r.grade||'none'}">${r.grade?r.grade+' · '+r.score+' pts':'unresolved'}</b>
       · satisfaction ${r.satisfaction_final??'—'} · facts ${r.facts_uncovered??'—'}/${r.facts_total??'—'}
       · verifies ${r.verify_attempts??'—'} ${r.anti_patterns.length?'· anti-patterns: '+esc(r.anti_patterns.join(', ')):''}</div>

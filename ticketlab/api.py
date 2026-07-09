@@ -280,17 +280,31 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
                                for sol in s.verification.solutions]}
                 for s in scenarios.values()]
 
+    def _scenario_title(scenario_id: str) -> str:
+        """TL-1: listings must show a human-readable title, never the raw
+        slug. Attempt rows can outlive an authored scenario's yaml, so fall
+        back to a readable form derived from the slug when it no longer
+        resolves."""
+        s = scenarios.get(scenario_id)
+        if s is not None:
+            return s.metadata.title
+        return scenario_id.replace("-", " ").replace("_", " ").capitalize()
+
     @app.get("/trainer/attempts")
     def trainer_attempts(scenario_id: str | None = None,
                          trainee: str | None = None, limit: int = 200):
-        return store.list_attempts(scenario_id=scenario_id, trainee=trainee,
+        rows = store.list_attempts(scenario_id=scenario_id, trainee=trainee,
                                    limit=limit)
+        for r in rows:
+            r["scenario_title"] = _scenario_title(r["scenario_id"])
+        return rows
 
     @app.get("/trainer/attempts/{attempt_id}")
     def trainer_attempt_detail(attempt_id: str):
         rec = store.get_record(attempt_id)
         if rec is None:
             raise HTTPException(404, "unknown attempt")
+        rec["scenario_title"] = _scenario_title(rec["scenario_id"])
         return {"record": rec, "events": store.events(attempt_id),
                 "grades": store.get_grades(attempt_id)}
 

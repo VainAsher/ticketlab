@@ -234,5 +234,7 @@ def load_scenario_from_dict(raw: dict, product_mode: bool = False) -> Scenario:
 
 
 def load_scenario(path: str | Path, product_mode: bool = False) -> Scenario:
-    raw = yaml.safe_load(Path(path).read_text())
+    # explicit utf-8: scenario yamls are utf-8; locale-default decoding
+    # mangles non-ascii titles on Windows (TL-1)
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     return load_scenario_from_dict(raw, product_mode=product_mode)
