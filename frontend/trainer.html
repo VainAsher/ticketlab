@@ -547,9 +547,16 @@ $('publishBtn').onclick=async()=>{
     $('verrors').style.display='block';}
 };
 
-/* init */
+/* init — honors hash deep-links from the platform-gateway dashboard:
+   #scenario=<id> preselects the scenario filter; #attempt=<id> opens the
+   attempt dossier directly (same openDetail as a row click). */
 (async()=>{V=await fetch('/authoring/vocab').then(r=>r.json());
-  renderWizard('basics');loadStats();loadRows();})();
+  renderWizard('basics');
+  const h=new URLSearchParams(location.hash.slice(1));
+  await loadStats();
+  if(h.get('scenario'))$('fScen').value=h.get('scenario');
+  await loadRows();
+  if(h.get('attempt'))openDetail(h.get('attempt'));})();
 </script>
 </body>
 </html>
