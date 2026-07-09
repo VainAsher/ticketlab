@@ -225,6 +225,10 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
         return {"complete": r.complete, "grade": r.grade, "score": r.score,
                 "solution_label": r.matched_solution,
                 "feedback": r.feedback if r.complete else "",
+                # D12: hint is already filtered by the scenario's hint_level
+                # inside the verifier — the client only ever receives what
+                # the level allows. Never expose r.unmet mid-attempt.
+                "hint": r.hint if not r.complete else "",
                 "anti_patterns_hit": r.anti_patterns_hit,
                 "attempts_remaining":
                     a.scenario.scoring.max_verify_attempts - a.verify_attempts_used}
@@ -320,6 +324,7 @@ def create_app(scenario_dir: str = "scenarios", llm=None,
                                 for t in sorted(ASSERTION_TYPES)},
             "operators": sorted(OPERATORS),
             "grades": list(GRADE_RANK),        # temp < partial < full
+            "hint_levels": ["none", "nudge", "explicit"],
             "personas": personas,
             "crash_rules": ["startup_contains", "startup_matches",
                             "variable_equals", "heap_exceeds_limit"],

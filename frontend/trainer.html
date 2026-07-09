@@ -260,7 +260,7 @@ const D={
   env:{name:'',egg:'minecraft-paper',memory:2048,disk:5120,cpu:100,vars:[],rules:[]},
   fault:[],
   conv:{persona:'',sat:40,facts:[]},
-  ver:{solutions:[],antis:[]},
+  ver:{solutions:[],antis:[],hint_level:'nudge'},
   scoring:{max_verify_attempts:5,target_minutes:10},
 };
 
@@ -439,8 +439,10 @@ function fillStep(id){
     <div class="grid3" style="margin-top:12px">
       ${F('max verify attempts',inp('scoring.max_verify_attempts',D.scoring.max_verify_attempts,'','number'),'The “Check my work” budget. 5 is the house norm.')}
       ${F('target minutes',inp('scoring.target_minutes',D.scoring.target_minutes,'','number'),'For the analytics, not a hard cutoff.')}
+      ${F('hint level','<select id="verHint">'+((V?.hint_levels)||['none','nudge','explicit']).map(h=>`<option ${(D.ver.hint_level||'nudge')===h?'selected':''}>${h}</option>`).join('')+'</select>','What a FAILED verify may say. nudge never names the target; use none for exam scenarios, explicit for onboarding.')}
     </div>`;
     bindInputs(b);
+    $('verHint').onchange=e=>D.ver.hint_level=e.target.value;
     $('solAdd').onclick=()=>{D.ver.solutions.push({id:'',grade:'full',score:100,label:'',feedback:'',assertions:[]});fillStep('ver');};
     $('apAdd').onclick=()=>{D.ver.antis.push({id:'',penalty:30,feedback:'',assertions:[]});fillStep('ver');};
     wireSolCards(b);
@@ -515,6 +517,7 @@ function compose(){
       satisfaction_start:num(D.conv.sat,50),never_volunteers:true,
       hidden_facts:D.conv.facts.map(f=>({id:f.id,fact:f.fact,reveal_keywords:f.keywords}))},
     verification:{poll_interval_seconds:10,
+      hint_level:D.ver.hint_level||'nudge',
       solutions:D.ver.solutions.map(s=>({id:s.id,grade:s.grade,score:num(s.score,100),
         label:s.label,feedback:s.feedback,assertions:s.assertions.map(a=>strip({...a}))})),
       anti_patterns:D.ver.antis.map(s=>({id:s.id,penalty:num(s.penalty,30),

@@ -14,7 +14,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from ticketlab.schema import Scenario
-from ticketlab.adapters.mock import MockAdapter, FakeClock
+from ticketlab.adapters.mock import MockAdapter, FakeClock, SimClock
 from ticketlab.adapters.billing import BillingAdapter
 from ticketlab.verifier import Verifier, VerifyResult
 from ticketlab.conversation import ConversationEngine, TurnResult
@@ -55,7 +55,10 @@ class Orchestrator:
                 "build; MVP supports 'mock' only")
         while len(self._attempts) >= self._max_attempts:   # REVIEW B3
             self._attempts.pop(next(iter(self._attempts)))
-        clock = FakeClock()
+        # D12 ruling 2: attempts run on the sim clock — wall time accrues 1:1
+        # and the Wait button (advance_clock) jumps it, so stability windows
+        # are satisfiable both by patience and by knowing to wait.
+        clock = SimClock()
         adapter = MockAdapter(clock=clock)
         billing = BillingAdapter()
         adapter.provision(scenario.environment.server,
@@ -123,6 +126,7 @@ class Orchestrator:
                 "complete": result.complete, "grade": result.grade,
                 "score": result.score,
                 "anti_patterns": result.anti_patterns_hit,
+                "hint": result.hint,
             }, ts=attempt.clock.now())
         return result
 
@@ -136,6 +140,16 @@ class Orchestrator:
     def _debrief_dict(self, attempt: Attempt) -> dict:
         conv = attempt.conversation.state
         best = attempt.best_verify
+        # D12 ruling 3: full reveal is unconditional at debrief — an
+        # unresolved attempt names its unmet assertions and gets the closest
+        # solution's authored feedback. Mid-attempt secrecy stays hint_level's
+        # job. Zero-verify (abandoned) attempts get a fresh check so the
+        # reveal reflects the state they walked away from.
+        if best and best.complete:
+            unmet, closest_feedback = [], ""
+        else:
+            last = attempt.last_verify or attempt.verifier.check()
+            unmet, closest_feedback = last.unmet, last.closest_feedback
         return {
             "technical": {
                 "complete": bool(best and best.complete),
@@ -146,6 +160,8 @@ class Orchestrator:
                             "No solution verified before the attempt ended.",
                 "anti_patterns": best.anti_patterns_hit if best else [],
                 "anti_pattern_feedback": best.anti_pattern_feedback if best else [],
+                "unmet": unmet,
+                "closest_feedback": closest_feedback,
             },
             "conversation": {
                 "satisfaction_final": conv.satisfaction,

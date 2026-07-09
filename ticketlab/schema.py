@@ -196,6 +196,12 @@ class AntiPattern(BaseModel):
 
 class Verification(BaseModel):
     poll_interval_seconds: int = 15
+    # D12 ruling 1: what a FAILED verify may say. 'nudge' (default) sends a
+    # fixed engine string keyed on the unmet assertion's type — non-spoiler by
+    # construction. 'none' restores silence (exam scenarios); 'explicit' names
+    # the assertion with live progress (onboarding). Filtered server-side:
+    # clients only ever receive what the level allows.
+    hint_level: Literal["none", "nudge", "explicit"] = "nudge"
     solutions: list[Solution] = Field(min_length=1)
     anti_patterns: list[AntiPattern] = []
 

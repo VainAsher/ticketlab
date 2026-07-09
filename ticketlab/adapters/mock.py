@@ -5,6 +5,8 @@ a real panel).
 """
 from __future__ import annotations
 
+import time
+
 from ticketlab.adapters.base import PanelSnapshot
 
 
@@ -17,6 +19,21 @@ class FakeClock:
 
     def advance(self, seconds: float) -> None:
         self._t += seconds
+
+
+class SimClock(FakeClock):
+    """Attempt clock (D12 ruling 2). Wall time accrues into sim time 1:1 —
+    doing nothing also works — and advance() (the Wait button, the 'wait'
+    fault verb) jumps it forward, so stability windows test the KNOWLEDGE
+    that you must wait, not the trainee's patience. FakeClock stays frozen
+    for deterministic unit tests."""
+
+    def __init__(self, start: float = 1_000_000.0):
+        super().__init__(start)
+        self._wall0 = time.monotonic()
+
+    def now(self) -> float:
+        return self._t + (time.monotonic() - self._wall0)
 
 
 class MockAdapter:
